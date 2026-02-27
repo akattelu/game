@@ -16,8 +16,8 @@ pub fn build(b: *std.Build) !void {
     // call shdc.createSourceFile() helper function, this returns a `!*Build.Step`:
     const shdc_step = try sokol.shdc.createSourceFile(b, .{
         .shdc_dep = dep_shdc,
-        .input = "src/cube.glsl",
-        .output = "src/cube.glsl.zig",
+        .input = "src/terrain.glsl",
+        .output = "src/terrain.glsl.zig",
         .slang = .{ .metal_macos = true, .spirv_vk = true },
     });
 

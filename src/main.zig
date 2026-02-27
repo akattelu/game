@@ -12,7 +12,7 @@ const math = @import("math.zig");
 const Mat4 = math.Mat4;
 const Vec3 = math.Vec3;
 
-const shd = @import("cube.glsl.zig");
+const shd = @import("terrain.glsl.zig");
 
 const NUM_VERTICES: i32 = 100;
 
@@ -69,12 +69,12 @@ export fn init() void {
 
     state.pipeline = sg.makePipeline(
         .{
-            .shader = sg.makeShader(shd.cubeShaderDesc(sg.queryBackend())),
+            .shader = sg.makeShader(shd.terrainShaderDesc(sg.queryBackend())),
             .layout = init: {
                 var l = sg.VertexLayoutState{};
-                l.attrs[shd.ATTR_cube_position].format = .FLOAT3;
-                l.attrs[shd.ATTR_cube_color0].format = .UBYTE4N;
-                l.attrs[shd.ATTR_cube_texcoord0].format = .SHORT2N;
+                l.attrs[shd.ATTR_terrain_position].format = .FLOAT3;
+                l.attrs[shd.ATTR_terrain_color0].format = .UBYTE4N;
+                l.attrs[shd.ATTR_terrain_texcoord0].format = .SHORT2N;
                 break :init l;
             },
             .index_type = .UINT16,
@@ -103,11 +103,10 @@ export fn frame() void {
     _ = @as(f32, @floatCast(sapp.frameDuration() * 60));
     const vs_params = computeVsParams();
 
-    sg.beginPass(.{
-        .swapchain = sglue.swapchain(),
-    });
     const range = terrain.vertices(NUM_VERTICES);
     sg.updateBuffer(state.bind.vertex_buffers[0], range);
+
+    sg.beginPass(.{ .swapchain = sglue.swapchain() });
     sg.applyPipeline(state.pipeline);
     sg.applyBindings(state.bind);
     sg.applyUniforms(shd.UB_vs_params, sg.asRange(&vs_params));
