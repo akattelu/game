@@ -22,6 +22,7 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
         .with_sokol_imgui = true,
         .with_tracing = true,
+        .wgpu = target.result.cpu.arch.isWasm(),
     });
 
     const cimgui_config = cimgui.getConfig(false);
@@ -129,13 +130,12 @@ fn buildWeb(b: *std.Build, options: Options) !*std.Build.Step.Compile {
         .target = options.target,
         .optimize = options.optimize,
         .emsdk = emsdk,
-        .use_webgl2 = true,
-        .use_webgpu = false,
+        .use_webgl2 = false,
+        .use_webgpu = true,
         .use_emmalloc = true,
         .use_filesystem = false,
-        // .shell_file_path = null,
         .extra_args = &.{
-            "-sSTACK_SIZE=512KB",
+            "-sSTACK_SIZE=3MB",
             "-sINITIAL_MEMORY=64MB",
             "-sALLOW_MEMORY_GROWTH=1",
             "-sASSERTIONS",
