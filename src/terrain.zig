@@ -92,11 +92,15 @@ pub inline fn indices(allocator: std.mem.Allocator) sg.Range {
 pub fn ui() void {
     if (ig.igBegin("Terrain Playground", 1, ig.ImGuiWindowFlags_None)) {
         _ = ig.igText("Parameters", ig.IMGUI_VERSION);
-        _ = ig.igSliderInt("Side Length", &state.mesh_vertices, 1, 200);
+        _ = ig.igSliderInt("Side Length", &state.mesh_vertices, 2, 200);
         ig.igSeparator();
         _ = ig.igSliderFloat("Frequency", &state.frequency, 0.0, 1.0);
         _ = ig.igSliderFloat("Amplitude", &state.amplitude, 0.0, 100.0);
         _ = ig.igSliderInt("Octaves", &state.octaves, 1, 8);
+        _ = ig.igSliderFloat("Lacunarity", &state.lacunarity, 1.0, 4.0);
+        _ = ig.igSliderFloat("Persistence", &state.persistence, 0.1, 1.0);
+        ig.igSeparator();
+        _ = ig.igSliderFloat("Seed", &state.seed, 0.0, 1000.0);
         ig.igSeparator();
         _ = ig.igText("Metadata", ig.IMGUI_VERSION);
         _ = ig.igBulletText("Dear ImGui Version: %s", ig.IMGUI_VERSION);
