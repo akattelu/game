@@ -16,6 +16,7 @@ const sgimgui = sokol.sgimgui;
 pub const Vertex = extern struct { x: f32, y: f32, z: f32, color: u32, u: i16, v: i16 };
 pub const state = struct {
     var frequency: f32 = 0.05;
+    var amplitude: f32 = 50.0;
 };
 
 pub inline fn vertices(comptime n: comptime_int) sg.Range {
@@ -31,6 +32,7 @@ pub inline fn vertices(comptime n: comptime_int) sg.Range {
                 @floatFromInt(i),
                 @floatFromInt(j),
                 state.frequency,
+                state.amplitude,
             );
             v[i][j] = .{
                 .x = @as(f32, @floatFromInt(i)) - (nf / 2.0),
@@ -74,6 +76,7 @@ pub fn ui() void {
     if (ig.igBegin("Terrain Playground", 1, ig.ImGuiWindowFlags_None)) {
         _ = ig.igText("Parameters", ig.IMGUI_VERSION);
         _ = ig.igSliderFloat("Frequency", &state.frequency, 0.0, 1.0);
+        _ = ig.igSliderFloat("Amplitude", &state.amplitude, 0.0, 100.0);
         ig.igSeparator();
         _ = ig.igText("Metadata", ig.IMGUI_VERSION);
         _ = ig.igBulletText("Dear ImGui Version: %s", ig.IMGUI_VERSION);

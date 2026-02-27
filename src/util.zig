@@ -33,10 +33,10 @@ fn smoothNoise(x: f32, z: f32) f32 {
     return lerp(lerp(a, b, u), lerp(c, d, u), v);
 }
 
-pub fn sampleNoise(x: f32, z: f32, frequency: f32) f32 {
+pub fn sampleNoise(x: f32, z: f32, frequency: f32, amplitude: f32) f32 {
     var total: f32 = 0;
     var freq = frequency;
-    var amp: f32 = 50.0;
+    var amp: f32 = amplitude;
 
     var i: i32 = 0;
     while (i < 4) : (i += 1) {
