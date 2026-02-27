@@ -18,16 +18,14 @@ const Vec3 = math.Vec3;
 
 const shd = @import("terrain.glsl.zig");
 
-const NUM_VERTICES: i32 = 100;
-
 const state = struct {
     var pass_action: sg.PassAction = .{};
     var pipeline: sg.Pipeline = .{};
     var bind: sg.Bindings = .{};
 
-    var terrain_state: terrain.state = terrain.state;
+    var terrain_state = terrain.state;
 
-    var eye: Vec3 = .{ .x = 100.0, .y = 50.0, .z = 50.0 };
+    var eye: Vec3 = .{ .x = 110.0, .y = 140.0, .z = 30.0 };
 };
 
 export fn init() void {
@@ -44,13 +42,13 @@ export fn init() void {
         .logger = .{ .func = slog.func },
     });
 
-    const range = terrain.vertices(NUM_VERTICES);
+    const range = terrain.vertices(std.heap.smp_allocator);
     state.bind.vertex_buffers[0] = sg.makeBuffer(.{ .usage = .{ .dynamic_update = true, .vertex_buffer = true }, .size = range.size });
 
     // cube index buffer
     state.bind.index_buffer = sg.makeBuffer(.{
         .usage = .{ .index_buffer = true },
-        .data = terrain.indices(NUM_VERTICES),
+        .data = terrain.indices(std.heap.smp_allocator),
     });
 
     // create a small checker-board image and texture view
@@ -106,9 +104,20 @@ export fn init() void {
 }
 
 export fn frame() void {
-    const terrain_frame = terrain.vertices(NUM_VERTICES);
+    const terrain_frame = terrain.vertices(std.heap.smp_allocator);
+    sg.destroyBuffer(state.bind.vertex_buffers[0]);
+    state.bind.vertex_buffers[0] = sg.makeBuffer(.{
+        .usage = .{ .dynamic_update = true, .vertex_buffer = true },
+        .size = terrain_frame.size,
+    });
     sg.updateBuffer(state.bind.vertex_buffers[0], terrain_frame);
     const vs_params = .{ .mvp = Mat4.mvp(state.eye, sapp.widthf(), sapp.heightf()) };
+
+    sg.destroyBuffer(state.bind.index_buffer);
+    state.bind.index_buffer = sg.makeBuffer(.{
+        .usage = .{ .index_buffer = true },
+        .data = terrain.indices(std.heap.smp_allocator),
+    });
 
     simgui.newFrame(.{
         .width = sapp.width(),
@@ -124,7 +133,7 @@ export fn frame() void {
     sg.applyBindings(state.bind);
     sg.applyUniforms(shd.UB_vs_params, sg.asRange(&vs_params));
 
-    sg.draw(0, (NUM_VERTICES - 1) * (NUM_VERTICES - 1) * 6, 1);
+    sg.draw(0, terrain.getObjectCount(), 1);
     sdtx.draw();
     sgimgui.draw();
     simgui.render();

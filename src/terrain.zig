@@ -1,3 +1,4 @@
+const std = @import("std");
 const util = @import("util.zig");
 const math = @import("math.zig");
 const Mat4 = math.Mat4;
@@ -14,72 +15,96 @@ const simgui = sokol.imgui;
 const sgimgui = sokol.sgimgui;
 
 pub const Vertex = extern struct { x: f32, y: f32, z: f32, color: u32, u: i16, v: i16 };
-pub const state = struct {
+const state = struct {
+    var mesh_vertices: c_int = 10;
     var frequency: f32 = 0.05;
     var amplitude: f32 = 50.0;
+
+    var seed: f32 = 0.0;
+    var lacunarity: f32 = 8.0;
+    var persistence: f32 = 0.5;
+    var octaves: c_int = 4;
 };
 
-pub inline fn vertices(comptime n: comptime_int) sg.Range {
-    var v: [n][n]Vertex = undefined;
+pub fn vertices(allocator: std.mem.Allocator) sg.Range {
+    const n: usize = @intCast(state.mesh_vertices);
+    var vs: std.ArrayList(Vertex) = .empty;
     const nf: f32 = @floatFromInt(n);
+    const nm: f32 = @floatFromInt(n - 1);
     for (0..n) |i| {
         for (0..n) |j| {
-            const r: u8 = @intFromFloat(util.mapRange(@floatFromInt(i), 0, n - 1, 0, 255));
-            const g: u8 = @intFromFloat(util.mapRange(@floatFromInt(j), 0, n - 1, 0, 255));
+            const r: u8 = @intFromFloat(util.mapRange(@floatFromInt(i), 0, nm, 0, 255));
+            const g: u8 = @intFromFloat(util.mapRange(@floatFromInt(j), 0, nm, 0, 255));
             const b: u8 = 128;
 
-            const h: f32 = util.sampleNoise(
-                @floatFromInt(i),
-                @floatFromInt(j),
-                state.frequency,
-                state.amplitude,
-            );
-            v[i][j] = .{
+            const h: f32 = util.sampleNoise(@floatFromInt(i), @floatFromInt(j), .{
+                .frequency = state.frequency,
+                .amplitude = state.amplitude,
+                .octaves = state.octaves,
+                .seed = state.seed,
+                .lacunarity = state.lacunarity,
+                .persistence = state.persistence,
+            });
+
+            vs.append(allocator, .{
                 .x = @as(f32, @floatFromInt(i)) - (nf / 2.0),
                 .y = if (i == 0 or j == 0 or i == (n - 1) or j == (n - 1)) 0 else h,
                 .z = @as(f32, @floatFromInt(j)) - (nf / 2.0),
                 .color = util.rgbaToU32(r, g, b, 255),
                 .u = @intCast(@divTrunc(i, n)),
                 .v = @intCast(@divTrunc(j, n)),
+            }) catch {
+                unreachable;
             };
         }
     }
 
-    return sg.asRange(&v);
+    const ptr = vs.toOwnedSlice(allocator) catch unreachable;
+    return sg.asRange(ptr);
 }
 
-pub inline fn indices(comptime n: comptime_int) sg.Range {
-    var idx: [(n - 1) * (n - 1) * 6]u16 = undefined;
+pub inline fn indices(allocator: std.mem.Allocator) sg.Range {
+    const n: usize = @intCast(state.mesh_vertices);
+    var idx: std.ArrayList(u16) = .empty;
     var count: usize = 0;
-    for (0..n - 1) |iz| {
-        for (0..n - 1) |ix| {
+    for (0..(n - 1)) |iz| {
+        for (0..(n - 1)) |ix| {
             const A: u16 = @intCast(iz * n + ix);
             const B: u16 = @intCast(iz * n + ix + 1);
             const C: u16 = @intCast((iz + 1) * n + ix);
             const D: u16 = @intCast((iz + 1) * n + ix + 1);
 
-            idx[count + 0] = A;
-            idx[count + 1] = C;
-            idx[count + 2] = B;
+            idx.append(allocator, A) catch unreachable;
+            idx.append(allocator, C) catch unreachable;
+            idx.append(allocator, B) catch unreachable;
 
-            idx[count + 3] = B;
-            idx[count + 4] = C;
-            idx[count + 5] = D;
+            idx.append(allocator, B) catch unreachable;
+            idx.append(allocator, C) catch unreachable;
+            idx.append(allocator, D) catch unreachable;
 
             count += 6;
         }
     }
-    return sg.asRange(&idx);
+    const ptr = idx.toOwnedSlice(allocator) catch unreachable;
+    return sg.asRange(ptr);
 }
 
 pub fn ui() void {
     if (ig.igBegin("Terrain Playground", 1, ig.ImGuiWindowFlags_None)) {
         _ = ig.igText("Parameters", ig.IMGUI_VERSION);
+        _ = ig.igSliderInt("Side Length", &state.mesh_vertices, 1, 200);
+        ig.igSeparator();
         _ = ig.igSliderFloat("Frequency", &state.frequency, 0.0, 1.0);
         _ = ig.igSliderFloat("Amplitude", &state.amplitude, 0.0, 100.0);
+        _ = ig.igSliderInt("Octaves", &state.octaves, 1, 8);
         ig.igSeparator();
         _ = ig.igText("Metadata", ig.IMGUI_VERSION);
         _ = ig.igBulletText("Dear ImGui Version: %s", ig.IMGUI_VERSION);
     }
     ig.igEnd();
+}
+
+pub fn getObjectCount() u32 {
+    const n: u32 = @intCast(state.mesh_vertices);
+    return (n - 1) * (n - 1) * 6;
 }

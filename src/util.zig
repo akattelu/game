@@ -7,11 +7,12 @@ pub fn rgbaToU32(r: u8, g: u8, b: u8, a: u8) u32 {
 }
 
 fn hash2d(x: f32, y: f32) f32 {
-    // Simple hash — good enough for terrain prototyping
-    var n = @as(i32, @intFromFloat(x * 127.1 + y * 311.7));
+    // Use @mod to keep values in i32 range before converting
+    const val = @mod(x * 127.1 + y * 311.7, 65536.0);
+    var n = @as(i32, @intFromFloat(val));
     n = (n << 13) ^ n;
     const nn = @as(f32, @floatFromInt((n *% (n *% n *% 15731 +% 789221) +% 1376312589) & 0x7fffffff));
-    return nn / 2147483647.0; // normalize to 0..1
+    return nn / 2147483647.0;
 }
 
 fn smoothNoise(x: f32, z: f32) f32 {
@@ -33,16 +34,17 @@ fn smoothNoise(x: f32, z: f32) f32 {
     return lerp(lerp(a, b, u), lerp(c, d, u), v);
 }
 
-pub fn sampleNoise(x: f32, z: f32, frequency: f32, amplitude: f32) f32 {
+const NoiseOptions = struct { frequency: f32, amplitude: f32, seed: f32, lacunarity: f32, persistence: f32, octaves: c_int };
+pub fn sampleNoise(x: f32, z: f32, options: NoiseOptions) f32 {
     var total: f32 = 0;
-    var freq = frequency;
-    var amp: f32 = amplitude;
+    var freq = options.frequency;
+    var amp: f32 = options.amplitude;
 
     var i: i32 = 0;
-    while (i < 4) : (i += 1) {
-        total += smoothNoise(x * freq + 0.0, z * freq + 0.0) * amp;
-        freq *= 8.0;
-        amp *= 0.5;
+    while (i < options.octaves) : (i += 1) {
+        total += smoothNoise(x * freq + options.seed, z * freq + (options.seed)) * amp;
+        freq *= options.lacunarity;
+        amp *= options.persistence;
     }
     return total;
 }
