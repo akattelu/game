@@ -1,6 +1,7 @@
 const std = @import("std");
 const sokol = @import("sokol");
 const cimgui = @import("cimgui");
+const ig = @import("cimgui");
 
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
@@ -36,7 +37,7 @@ pub fn build(b: *std.Build) !void {
             .optimize = optimize,
             .imports = &.{
                 .{ .name = "sokol", .module = dep_sokol.module("sokol") },
-                .{ .name = cimgui_config.module_name, .module = dep_cimgui.module(cimgui_config.module_name) },
+                .{ .name = "cimgui", .module = dep_cimgui.module("cimgui") },
             },
         }),
     });

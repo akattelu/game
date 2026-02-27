@@ -8,6 +8,8 @@ const sdtx = sokol.debugtext;
 const simgui = sokol.imgui;
 const sgimgui = sokol.sgimgui;
 
+const ig = @import("cimgui");
+
 const util = @import("util.zig");
 const terrain = @import("terrain.zig");
 const math = @import("math.zig");
@@ -110,12 +112,30 @@ export fn frame() void {
     const range = terrain.vertices(NUM_VERTICES);
     sg.updateBuffer(state.bind.vertex_buffers[0], range);
 
+    simgui.newFrame(.{
+        .width = sapp.width(),
+        .height = sapp.height(),
+        .delta_time = sapp.frameDuration(),
+        .dpi_scale = sapp.dpiScale(),
+    });
+
+    if (ig.igBegin("Hello Dear ImGui!", 1, ig.ImGuiWindowFlags_None)) {
+        _ = ig.igColorEdit3("Background", &state.pass_action.colors[0].clear_value.r, ig.ImGuiColorEditFlags_None);
+        _ = ig.igText("Dear ImGui Version: %s", ig.IMGUI_VERSION);
+    }
+    ig.igEnd();
+
     sg.beginPass(.{ .swapchain = sglue.swapchain() });
+
     sg.applyPipeline(state.pipeline);
     sg.applyBindings(state.bind);
     sg.applyUniforms(shd.UB_vs_params, sg.asRange(&vs_params));
+
     sg.draw(0, (NUM_VERTICES - 1) * (NUM_VERTICES - 1) * 6, 1);
     sdtx.draw();
+    sgimgui.draw();
+    simgui.render();
+
     sg.endPass();
     sg.commit();
 }
@@ -125,6 +145,7 @@ export fn cleanup() void {
 }
 
 export fn event(e: [*c]const sapp.Event) callconv(.c) void {
+    _ = simgui.handleEvent(e.*);
     switch (e.*.type) {
         .KEY_DOWN => {
             switch (e.*.key_code) {
