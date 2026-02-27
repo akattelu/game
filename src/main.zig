@@ -106,11 +106,9 @@ export fn init() void {
 }
 
 export fn frame() void {
-    _ = @as(f32, @floatCast(sapp.frameDuration() * 60));
-    const vs_params = computeVsParams();
-
-    const range = terrain.vertices(NUM_VERTICES);
-    sg.updateBuffer(state.bind.vertex_buffers[0], range);
+    const terrain_frame = terrain.vertices(NUM_VERTICES);
+    sg.updateBuffer(state.bind.vertex_buffers[0], terrain_frame);
+    const vs_params = .{ .mvp = Mat4.mvp(state.eye, sapp.widthf(), sapp.heightf()) };
 
     simgui.newFrame(.{
         .width = sapp.width(),
@@ -119,13 +117,8 @@ export fn frame() void {
         .dpi_scale = sapp.dpiScale(),
     });
 
-    if (ig.igBegin("Hello Dear ImGui!", 1, ig.ImGuiWindowFlags_None)) {
-        _ = ig.igColorEdit3("Background", &state.pass_action.colors[0].clear_value.r, ig.ImGuiColorEditFlags_None);
-        _ = ig.igText("Dear ImGui Version: %s", ig.IMGUI_VERSION);
-    }
-    ig.igEnd();
-
     sg.beginPass(.{ .swapchain = sglue.swapchain() });
+    terrain.ui();
 
     sg.applyPipeline(state.pipeline);
     sg.applyBindings(state.bind);
@@ -149,30 +142,16 @@ export fn event(e: [*c]const sapp.Event) callconv(.c) void {
     switch (e.*.type) {
         .KEY_DOWN => {
             switch (e.*.key_code) {
-                .LEFT => {
-                    state.eye.y -= 0.8;
-                },
-                .RIGHT => {
-                    state.eye.y += 0.8;
-                },
+                .LEFT => state.eye.y -= 0.8,
+                .RIGHT => state.eye.y += 0.8,
 
-                .UP => {
-                    state.eye.z -= 0.8;
-                },
-                .DOWN => {
-                    state.eye.z += 0.8;
-                },
+                .UP => state.eye.z -= 0.8,
+                .DOWN => state.eye.z += 0.8,
 
-                .A => {
-                    state.eye.x -= 0.8;
-                },
-                .D => {
-                    state.eye.x += 0.8;
-                },
+                .A => state.eye.x -= 0.8,
+                .D => state.eye.x += 0.8,
 
-                .Q => {
-                    sapp.quit();
-                },
+                .Q => sapp.quit(),
                 else => {},
             }
         },
@@ -187,8 +166,8 @@ pub fn main() !void {
         .cleanup_cb = cleanup,
         .event_cb = event,
 
-        .width = 640,
-        .height = 480,
+        .width = 1280,
+        .height = 960,
         .icon = .{ .sokol_default = true },
         .window_title = "game",
 
@@ -196,15 +175,4 @@ pub fn main() !void {
 
         .logger = .{ .func = slog.func },
     });
-}
-
-fn computeVsParams() shd.VsParams {
-    const model = Mat4.identity();
-    const aspect = sapp.widthf() / sapp.heightf();
-    const proj = Mat4.persp(80.0, aspect, 0.01, 200.0);
-    const view: Mat4 = Mat4.lookat(state.eye, Vec3.zero(), Vec3.up());
-
-    return shd.VsParams{
-        .mvp = Mat4.mul(Mat4.mul(proj, view), model),
-    };
 }

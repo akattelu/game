@@ -173,6 +173,15 @@ pub const Mat4 = extern struct {
         res.m[3][2] = translation.z;
         return res;
     }
+
+    pub fn mvp(eye: Vec3, w: f32, h: f32) Mat4 {
+        const model = Mat4.identity();
+        const aspect = w / h;
+        const proj = Mat4.persp(80.0, aspect, 0.01, 200.0);
+        const view: Mat4 = Mat4.lookat(eye, Vec3.zero(), Vec3.up());
+
+        return Mat4.mul(Mat4.mul(proj, view), model);
+    }
 };
 
 test "Vec3.zero" {
