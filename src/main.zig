@@ -1,3 +1,4 @@
+const builtin = @import("builtin");
 const std = @import("std");
 const sokol = @import("sokol");
 const slog = sokol.log;
@@ -32,6 +33,7 @@ export fn init() void {
     sg.setup(.{ .environment = sglue.environment(), .logger = .{ .func = slog.func } });
     sgimgui.setup(.{});
     simgui.setup(.{ .logger = .{ .func = slog.func } });
+    const allocator = if (builtin.cpu.arch.isWasm()) std.heap.c_allocator else std.heap.smp_allocator;
 
     sdtx.setup(.{
         .fonts = init: {
@@ -42,13 +44,13 @@ export fn init() void {
         .logger = .{ .func = slog.func },
     });
 
-    const range = terrain.vertices(std.heap.smp_allocator);
+    const range = terrain.vertices(allocator);
     state.bind.vertex_buffers[0] = sg.makeBuffer(.{ .usage = .{ .dynamic_update = true, .vertex_buffer = true }, .size = range.size });
 
     // cube index buffer
     state.bind.index_buffer = sg.makeBuffer(.{
         .usage = .{ .index_buffer = true },
-        .data = terrain.indices(std.heap.smp_allocator),
+        .data = terrain.indices(allocator),
     });
 
     // create a small checker-board image and texture view
@@ -104,7 +106,8 @@ export fn init() void {
 }
 
 export fn frame() void {
-    const terrain_frame = terrain.vertices(std.heap.smp_allocator);
+    const allocator = if (builtin.cpu.arch.isWasm()) std.heap.c_allocator else std.heap.smp_allocator;
+    const terrain_frame = terrain.vertices(allocator);
     sg.destroyBuffer(state.bind.vertex_buffers[0]);
     state.bind.vertex_buffers[0] = sg.makeBuffer(.{
         .usage = .{ .dynamic_update = true, .vertex_buffer = true },
@@ -116,7 +119,7 @@ export fn frame() void {
     sg.destroyBuffer(state.bind.index_buffer);
     state.bind.index_buffer = sg.makeBuffer(.{
         .usage = .{ .index_buffer = true },
-        .data = terrain.indices(std.heap.smp_allocator),
+        .data = terrain.indices(allocator),
     });
 
     simgui.newFrame(.{
@@ -174,14 +177,12 @@ pub fn main() !void {
         .frame_cb = frame,
         .cleanup_cb = cleanup,
         .event_cb = event,
-
         .width = 1280,
         .height = 960,
         .icon = .{ .sokol_default = true },
         .window_title = "game",
-
         .sample_count = 4,
-
         .logger = .{ .func = slog.func },
+        .html5 = .{ .canvas_selector = "#canvas" },
     });
 }
