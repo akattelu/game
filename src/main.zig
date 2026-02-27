@@ -5,6 +5,8 @@ const sg = sokol.gfx;
 const sapp = sokol.app;
 const sglue = sokol.glue;
 const sdtx = sokol.debugtext;
+const simgui = sokol.imgui;
+const sgimgui = sokol.sgimgui;
 
 const util = @import("util.zig");
 const terrain = @import("terrain.zig");
@@ -28,6 +30,8 @@ const state = struct {
 
 export fn init() void {
     sg.setup(.{ .environment = sglue.environment(), .logger = .{ .func = slog.func } });
+    sgimgui.setup(.{});
+    simgui.setup(.{ .logger = .{ .func = slog.func } });
 
     sdtx.setup(.{
         .fonts = init: {

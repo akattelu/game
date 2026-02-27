@@ -1,5 +1,6 @@
 const std = @import("std");
 const sokol = @import("sokol");
+const cimgui = @import("cimgui");
 
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
@@ -8,7 +9,13 @@ pub fn build(b: *std.Build) !void {
     const dep_sokol = b.dependency("sokol", .{
         .target = target,
         .optimize = optimize,
+        .with_sokol_imgui = true,
+        .with_tracing = true,
     });
+
+    const cimgui_config = cimgui.getConfig(false);
+    const dep_cimgui = b.dependency("cimgui", .{ .target = target, .optimize = optimize });
+    dep_sokol.artifact("sokol_clib").root_module.addIncludePath(dep_cimgui.path(cimgui_config.include_dir));
 
     // extract shdc dependency from sokol dependency
     const dep_shdc = dep_sokol.builder.dependency("shdc", .{});
@@ -29,6 +36,7 @@ pub fn build(b: *std.Build) !void {
             .optimize = optimize,
             .imports = &.{
                 .{ .name = "sokol", .module = dep_sokol.module("sokol") },
+                .{ .name = cimgui_config.module_name, .module = dep_cimgui.module(cimgui_config.module_name) },
             },
         }),
     });
