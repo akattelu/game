@@ -169,6 +169,10 @@ export fn event(e: [*c]const sapp.Event) callconv(.c) void {
                 .D => {
                     state.eye.x += 0.8;
                 },
+
+                .Q => {
+                    sapp.quit();
+                },
                 else => {},
             }
         },
