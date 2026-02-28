@@ -81,6 +81,7 @@ export fn init() void {
                 l.attrs[shd.ATTR_terrain_position].format = .FLOAT3;
                 l.attrs[shd.ATTR_terrain_color0].format = .UBYTE4N;
                 l.attrs[shd.ATTR_terrain_texcoord0].format = .SHORT2N;
+                l.attrs[shd.ATTR_terrain_normal].format = .FLOAT3;
                 break :init l;
             },
             .index_type = .UINT16,

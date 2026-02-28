@@ -9,6 +9,7 @@ layout(binding = 0) uniform vs_params {
 in vec4 position;
 in vec4 color0;
 in vec2 texcoord0;
+in vec3 normal;
 
 out vec4 color;
 out vec2 uv;

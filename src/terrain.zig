@@ -14,7 +14,16 @@ const sdtx = sokol.debugtext;
 const simgui = sokol.imgui;
 const sgimgui = sokol.sgimgui;
 
-pub const Vertex = extern struct { x: f32, y: f32, z: f32, color: u32, u: i16, v: i16 };
+pub const Vertex = extern struct {
+    x: f32,
+    y: f32,
+    z: f32,
+    color: u32,
+    u: i16,
+    v: i16,
+    normal: Vec3,
+};
+
 const state = struct {
     var mesh_vertices: c_int = 10;
     var frequency: f32 = 0.05;
@@ -53,9 +62,8 @@ pub fn vertices(allocator: std.mem.Allocator) sg.Range {
                 .color = util.rgbaToU32(r, g, b, 255),
                 .u = @intCast(@divTrunc(i, n)),
                 .v = @intCast(@divTrunc(j, n)),
-            }) catch {
-                unreachable;
-            };
+                .normal = Vec3.zero(),
+            }) catch unreachable;
         }
     }
 
