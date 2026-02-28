@@ -17,7 +17,7 @@ out vec2 uv;
 void main() {
     gl_Position = mvp * position;
     color = color0;
-    uv = texcoord0 * 5.0; 
+    uv = texcoord0 * 10.0; 
 }
 @end
 
