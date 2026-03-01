@@ -2,10 +2,13 @@ const std = @import("std");
 const sokol = @import("sokol");
 const cimgui = @import("cimgui");
 const ig = @import("cimgui");
+const print = std.debug.print;
 
+const WebGraphicsMode = enum { webgl, webgpu, none };
 const Options = struct {
     dep_sokol: *std.Build.Dependency,
     dep_cimgui: *std.Build.Dependency,
+    dep_shdc: *std.Build.Dependency,
 
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
@@ -14,103 +17,80 @@ const Options = struct {
 };
 
 pub fn build(b: *std.Build) !void {
-    const target = b.standardTargetOptions(.{});
-    const optimize = b.standardOptimizeOption(.{});
+    const release = b.option(bool, "release", "Run a full release build across all targets") orelse false;
+    const web = b.option(bool, "web", "Build for web. If used with release wil") orelse false;
+    if (web and release) _ = fatal("Web option is a no-op when running build in release mode\n\n", .{});
 
-    const dep_sokol = b.dependency("sokol", .{
-        .target = target,
-        .optimize = optimize,
-        .with_sokol_imgui = true,
-        .with_tracing = true,
-        .wgpu = target.result.cpu.arch.isWasm(),
-    });
-
-    const cimgui_config = cimgui.getConfig(false);
-    const dep_cimgui = b.dependency("cimgui", .{ .target = target, .optimize = optimize });
-    dep_sokol.artifact("sokol_clib").root_module.addIncludePath(dep_cimgui.path(cimgui_config.include_dir));
-
-    // extract shdc dependency from sokol dependency
-    const dep_shdc = dep_sokol.builder.dependency("shdc", .{});
-
-    // call shdc.createSourceFile() helper function, this returns a `!*Build.Step`:
-    const shdc_step = try sokol.shdc.createSourceFile(b, .{
-        .shdc_dep = dep_shdc,
-        .input = "src/terrain.glsl",
-        .output = "src/terrain.glsl.zig",
-        .slang = .{
-            .metal_macos = true,
-            .spirv_vk = true,
-            .wgsl = true,
-            .glsl430 = true,
-            .glsl300es = true,
-            .hlsl5 = true,
+    switch (release) {
+        true => {
+            //
         },
-    });
+        false => {
+            switch (web) {
+                true => {
+                    print("Running in web build mode\n", .{});
+                    const options = setupDeps(b, b.resolveTargetQuery(.{ .os_tag = .emscripten, .cpu_arch = .wasm32 }), b.standardOptimizeOption(.{}), .webgpu);
+                    const shaders = try compileShaders(b, options);
+                    const web_artifacts = try buildWeb(b, options, .webgpu, true);
+                    web_artifacts.dependOn(shaders);
+                    // b.installArtifact(web_artifacts);
 
-    const root_mod = b.createModule(.{
-        .root_source_file = b.path("src/main.zig"),
-        .target = target,
-        .optimize = optimize,
-        .imports = &.{
-            .{ .name = "sokol", .module = dep_sokol.module("sokol") },
-            .{ .name = "cimgui", .module = dep_cimgui.module("cimgui") },
+                    b.getInstallStep().dependOn(web_artifacts);
+                },
+                false => {
+                    print("Running in standard build mode\n", .{});
+                    const options = setupDeps(b, b.standardTargetOptions(.{}), b.standardOptimizeOption(.{}), .none);
+                    const shaders = try compileShaders(b, options);
+                    const exe = try buildNative(b, options);
+
+                    const run_step = b.step("run", "Run the app");
+                    const test_step = b.step("test", "Run tests");
+                    exe.step.dependOn(shaders);
+
+                    const exe_tests = b.addTest(.{
+                        .name = "game-tests",
+                        .root_module = exe.root_module,
+                    });
+                    const run_exe_tests = b.addRunArtifact(exe_tests);
+
+                    const run_cmd = b.addRunArtifact(exe);
+                    if (b.args) |args| {
+                        run_cmd.addArgs(args);
+                    }
+
+                    b.installArtifact(exe);
+
+                    run_step.dependOn(&run_cmd.step);
+                    run_cmd.step.dependOn(b.getInstallStep());
+                    test_step.dependOn(&run_exe_tests.step);
+                },
+            }
+            //
         },
-    });
-    if (!target.result.cpu.arch.isWasm()) {
-        const exe = buildNative(b, .{
-            .dep_sokol = dep_sokol,
-            .dep_cimgui = dep_cimgui,
-            .target = target,
-            .optimize = optimize,
-            .root_mod = root_mod,
-        });
-        // add the shader compilation step as dependency to the build step
-        // which requires the generated Zig source file
-        exe.step.dependOn(shdc_step);
-    } else {
-        const lib = try buildWeb(b, .{
-            .dep_sokol = dep_sokol,
-            .dep_cimgui = dep_cimgui,
-            .target = target,
-            .optimize = optimize,
-            .root_mod = root_mod,
-        });
-        lib.step.dependOn(shdc_step);
     }
 }
 
-fn buildNative(b: *std.Build, options: Options) *std.Build.Step.Compile {
+fn buildFor(b: *std.Build, options: Options) !*std.Build.Step.Compile {
+    if (!options.target.result.cpu.arch.isWasm()) {
+        const exe = buildNative(b, options);
+        return exe;
+    } else {
+        const lib = try buildWeb(b, options);
+        return lib;
+    }
+}
+
+fn buildNative(b: *std.Build, options: Options) !*std.Build.Step.Compile {
     const root_mod = options.root_mod;
     const exe = b.addExecutable(.{
         .name = "game",
         .root_module = root_mod,
     });
 
-    const run_step = b.step("run", "Run the app");
-
-    const run_cmd = b.addRunArtifact(exe);
-    run_step.dependOn(&run_cmd.step);
-
-    run_cmd.step.dependOn(b.getInstallStep());
-
-    if (b.args) |args| {
-        run_cmd.addArgs(args);
-    }
-
-    const exe_tests = b.addTest(.{
-        .root_module = exe.root_module,
-    });
-    b.installArtifact(exe);
-
-    const run_exe_tests = b.addRunArtifact(exe_tests);
-
-    const test_step = b.step("test", "Run tests");
-    test_step.dependOn(&run_exe_tests.step);
-
     return exe;
 }
 
-fn buildWeb(b: *std.Build, options: Options) !*std.Build.Step.Compile {
+fn buildWeb(b: *std.Build, options: Options, web_graphics: WebGraphicsMode, add_run_step: bool) !*std.Build.Step {
     const lib = b.addLibrary(.{
         .name = "game",
         .root_module = options.root_mod,
@@ -130,8 +110,8 @@ fn buildWeb(b: *std.Build, options: Options) !*std.Build.Step.Compile {
         .target = options.target,
         .optimize = options.optimize,
         .emsdk = emsdk,
-        .use_webgl2 = false,
-        .use_webgpu = true,
+        .use_webgl2 = web_graphics == .webgl,
+        .use_webgpu = web_graphics == .webgpu,
         .use_emmalloc = true,
         .use_filesystem = false,
         .extra_args = &.{
@@ -143,11 +123,68 @@ fn buildWeb(b: *std.Build, options: Options) !*std.Build.Step.Compile {
 
         .shell_file_path = options.dep_sokol.path("src/sokol/web/shell.html"),
     });
-    // attach Emscripten linker output to default install step
-    b.getInstallStep().dependOn(&link_step.step);
-    // ...and a special run step to start the web build output via 'emrun'
-    const run = sokol.emRunStep(b, .{ .name = "game", .emsdk = emsdk });
-    run.step.dependOn(&link_step.step);
-    b.step("run", "Run game").dependOn(&run.step);
-    return lib;
+    if (add_run_step) {
+        const run = sokol.emRunStep(b, .{ .name = "game", .emsdk = emsdk });
+        run.step.dependOn(&link_step.step);
+        b.step("run", "Run game").dependOn(&run.step);
+    }
+    return &link_step.step;
+}
+
+fn setupDeps(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, web_graphics: WebGraphicsMode) Options {
+    const dep_sokol = b.dependency("sokol", .{
+        .target = target,
+        .optimize = optimize,
+        .with_sokol_imgui = true,
+        .with_tracing = true,
+        .wgpu = web_graphics == .webgpu,
+    });
+
+    const cimgui_config = cimgui.getConfig(false);
+    const dep_cimgui = b.dependency("cimgui", .{ .target = target, .optimize = optimize });
+    dep_sokol.artifact("sokol_clib").root_module.addIncludePath(dep_cimgui.path(cimgui_config.include_dir));
+
+    // extract shdc dependency from sokol dependency
+    const dep_shdc = dep_sokol.builder.dependency("shdc", .{});
+
+    const root_mod = b.createModule(.{
+        .root_source_file = b.path("src/main.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "sokol", .module = dep_sokol.module("sokol") },
+            .{ .name = "cimgui", .module = dep_cimgui.module("cimgui") },
+        },
+    });
+    return .{
+        .dep_sokol = dep_sokol,
+        .dep_cimgui = dep_cimgui,
+        .dep_shdc = dep_shdc,
+        .target = target,
+        .optimize = optimize,
+        .root_mod = root_mod,
+    };
+}
+
+fn compileShaders(b: *std.Build, options: Options) !*std.Build.Step {
+    const shdc_step = try sokol.shdc.createSourceFile(b, .{
+        .shdc_dep = options.dep_shdc,
+        .input = "src/terrain.glsl",
+        .output = "src/terrain.glsl.zig",
+        .slang = .{
+            .metal_macos = true,
+            .spirv_vk = true,
+            .wgsl = true,
+            .glsl430 = true,
+            .glsl300es = true,
+            .hlsl5 = true,
+        },
+    });
+
+    return shdc_step;
+}
+
+fn fatal(comptime format: []const u8, args: anytype) noreturn {
+    print(format, args);
+    std.process.exit(1);
 }
