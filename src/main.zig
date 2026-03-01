@@ -108,23 +108,17 @@ export fn init() void {
 
 export fn frame() void {
     const allocator = if (builtin.cpu.arch.isWasm()) std.heap.c_allocator else std.heap.smp_allocator;
-    const terrain_frame = terrain.vertices(allocator);
     const terrain_state = terrain.getState();
+
+    // Recreate terrain vertex buffer every frame
+    // because the vertex count is a dynamic parameter
+    const terrain_frame = terrain.vertices(allocator);
     sg.destroyBuffer(state.bind.vertex_buffers[0]);
     state.bind.vertex_buffers[0] = sg.makeBuffer(.{
         .usage = .{ .dynamic_update = true, .vertex_buffer = true },
         .size = terrain_frame.size,
     });
     sg.updateBuffer(state.bind.vertex_buffers[0], terrain_frame);
-    const vs_params: shd.VsParams = .{
-        .mvp = Mat4.mvp(state.eye, sapp.widthf(), sapp.heightf()),
-    };
-    const fs_params: shd.FsParams = .{
-        .light_dir = Vec3.new(0, 50.0, 0),
-        .use_texture = if (terrain_state.apply_texture) 1.0 else 0.0,
-        .use_lighting = if (terrain_state.apply_lighting) 1.0 else 0.0,
-        .ambient_intensity = terrain_state.ambient_intensity,
-    };
 
     sg.destroyBuffer(state.bind.index_buffer);
     state.bind.index_buffer = sg.makeBuffer(.{
@@ -132,21 +126,38 @@ export fn frame() void {
         .data = terrain.indices(allocator),
     });
 
+    // Setup shader params
+    const vs_params: shd.VsParams = .{
+        .mvp = Mat4.mvp(state.eye, sapp.widthf(), sapp.heightf()),
+    };
+    const fs_params: shd.FsParams = .{
+        .light_dir = Vec3.new(
+            @cos(terrain_state.elevation_angle) * @sin(terrain_state.azimuth_angle),
+            @sin(terrain_state.elevation_angle),
+            @cos(terrain_state.elevation_angle) * @cos(terrain_state.azimuth_angle),
+        ),
+        .use_texture = if (terrain_state.apply_texture) 1.0 else 0.0,
+        .use_lighting = if (terrain_state.apply_lighting) 1.0 else 0.0,
+        .ambient_intensity = terrain_state.ambient_intensity,
+    };
+
+    // Setup imgui
+    sg.beginPass(.{ .swapchain = sglue.swapchain() });
     simgui.newFrame(.{
         .width = sapp.width(),
         .height = sapp.height(),
         .delta_time = sapp.frameDuration(),
         .dpi_scale = sapp.dpiScale(),
     });
-
-    sg.beginPass(.{ .swapchain = sglue.swapchain() });
     terrain.ui();
 
+    // Pipeline
     sg.applyPipeline(state.pipeline);
     sg.applyBindings(state.bind);
     sg.applyUniforms(shd.UB_vs_params, sg.asRange(&vs_params));
     sg.applyUniforms(shd.UB_fs_params, sg.asRange(&fs_params));
 
+    // Draw
     sg.draw(0, terrain.getObjectCount(), 1);
     sdtx.draw();
     sgimgui.draw();

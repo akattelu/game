@@ -32,6 +32,8 @@ const state = struct {
     pub var apply_lighting: bool = true;
     pub var ambient_intensity: f32 = 0.2;
     pub var normal_cell_spacing: f32 = 2.0;
+    pub var azimuth_angle: f32 = 0.0;
+    pub var elevation_angle: f32 = 0.0;
 
     pub var frequency: f32 = 0.05;
     pub var amplitude: f32 = 50.0;
@@ -130,6 +132,8 @@ pub fn ui() void {
                 _ = ig.igCheckbox("Apply Lighting?", &state.apply_lighting);
                 _ = ig.igSliderFloat("Cell Spacing", &state.normal_cell_spacing, 0.01, 10.0);
                 _ = ig.igSliderFloat("Ambient Light Intensity", &state.ambient_intensity, 0.1, 1.0);
+                _ = ig.igSliderFloat("Azimuth Angle", &state.azimuth_angle, 0.0, 2 * std.math.pi);
+                _ = ig.igSliderFloat("Elevation angle", &state.elevation_angle, 0.0, std.math.pi / 2.0);
                 ig.igEndTabItem();
             }
             if (ig.igBeginTabItem("Meta", null, 0)) {
