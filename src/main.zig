@@ -117,10 +117,10 @@ export fn frame() void {
     sg.updateBuffer(state.bind.vertex_buffers[0], terrain_frame);
     const vs_params: shd.VsParams = .{
         .mvp = Mat4.mvp(state.eye, sapp.widthf(), sapp.heightf()),
-        .use_texture0 = terrain.shouldUseTexture(),
     };
     const fs_params: shd.FsParams = .{
-        .u_color = Vec3.new(0.4, 1.0, 1.0),
+        .light_dir = Vec3.new(0, 50.0, 0),
+        .use_texture = terrain.shouldUseTexture(),
     };
 
     sg.destroyBuffer(state.bind.index_buffer);
