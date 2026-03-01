@@ -73,6 +73,8 @@ pub fn vertices(allocator: std.mem.Allocator) sg.Range {
         }
     }
 
+    populateNormals(&vs.items, n);
+
     const ptr = vs.toOwnedSlice(allocator) catch unreachable;
     return sg.asRange(ptr);
 }
@@ -121,6 +123,24 @@ pub fn ui() void {
         _ = ig.igBulletText("Dear ImGui Version: %s", ig.IMGUI_VERSION);
     }
     ig.igEnd();
+}
+
+fn populateNormals(vxs: *[]Vertex, n: usize) void {
+    const vs = vxs.*;
+    for (0..n) |i| {
+        for (0..n) |j| {
+            const hl: f32 = vs[index(@max(i, 1) - 1, j, n)].y;
+            const hr: f32 = vs[index(@min(i + 1, n - 1), j, n)].y;
+            const hd: f32 = vs[index(i, @max(j, 1) - 1, n)].y;
+            const hu: f32 = vs[index(i, @min(j + 1, n - 1), n)].y;
+            const normal = Vec3.norm(Vec3.new(hl - hr, 2.0, hd - hu));
+            vs[index(i, j, n)].normal = normal;
+        }
+    }
+}
+
+fn index(i: usize, j: usize, n: usize) usize {
+    return (i * n) + j;
 }
 
 pub fn getObjectCount() u32 {
