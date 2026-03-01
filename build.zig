@@ -146,7 +146,7 @@ fn buildWeb(b: *std.Build, options: Options, web_graphics: WebGraphicsMode, add_
         .shell_file_path = options.dep_sokol.path("src/sokol/web/shell.html"),
     });
     if (add_run_step) {
-        const run = sokol.emRunStep(b, .{ .name = "game", .emsdk = emsdk });
+        const run = sokol.emRunStep(b, .{ .name = name, .emsdk = emsdk });
         run.step.dependOn(&link_step.step);
         b.step("run", "Run game").dependOn(&run.step);
     }
