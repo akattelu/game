@@ -136,6 +136,7 @@ export fn frame() void {
             @sin(terrain_state.elevation_angle),
             @cos(terrain_state.elevation_angle) * @cos(terrain_state.azimuth_angle),
         ),
+        .light_color = terrain_state.light_color,
         .use_texture = if (terrain_state.apply_texture) 1.0 else 0.0,
         .use_lighting = if (terrain_state.apply_lighting) 1.0 else 0.0,
         .ambient_intensity = terrain_state.ambient_intensity,
