@@ -59,8 +59,8 @@ pub fn vertices(allocator: std.mem.Allocator) sg.Range {
             const y: f32 = if (i == 0 or j == 0 or i == (n - 1) or j == (n - 1)) 0 else h;
             const z: f32 = @as(f32, @floatFromInt(j)) - (nf / 2.0);
             const color: u32 = util.rgbaToU32(r, g, b, 255);
-            const u: i16 = @intFromFloat(@as(f16, @floatFromInt(i)) / @as(f16, @floatFromInt(n)) * 32767.0);
-            const v: i16 = @intFromFloat(@as(f16, @floatFromInt(j)) / @as(f16, @floatFromInt(n)) * 32767.0);
+            const u: i16 = @intFromFloat(@as(f32, @floatFromInt(i)) / @as(f32, @floatFromInt(n)) * 32767.0);
+            const v: i16 = @intFromFloat(@as(f32, @floatFromInt(j)) / @as(f32, @floatFromInt(n)) * 32767.0);
             vs.append(allocator, .{
                 .x = x,
                 .y = y,
