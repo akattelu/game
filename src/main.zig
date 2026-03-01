@@ -25,6 +25,8 @@ const state = struct {
     var bind: sg.Bindings = .{};
 
     var terrain_state = terrain.state;
+
+    var mouse_down: bool = false;
 };
 
 export fn init() void {
@@ -169,18 +171,25 @@ export fn cleanup() void {
 
 export fn event(e: [*c]const sapp.Event) callconv(.c) void {
     _ = simgui.handleEvent(e.*);
+    const s = terrain.getState();
     switch (e.*.type) {
+        .MOUSE_SCROLL => {
+            s.camera_radius = @max(10.0, @min(300.0, s.camera_radius + e.*.scroll_y));
+        },
+        .MOUSE_DOWN => {
+            state.mouse_down = true;
+        },
+        .MOUSE_UP => {
+            state.mouse_down = false;
+        },
+        .MOUSE_MOVE => {
+            if (state.mouse_down) {
+                s.camera_phi = s.camera_phi + (-0.01 * e.*.mouse_dy); // Negative coefficient will reverse drag direction
+                s.camera_theta = s.camera_theta + (0.01 * e.*.mouse_dx);
+            }
+        },
         .KEY_DOWN => {
             switch (e.*.key_code) {
-                // .LEFT => state.eye.y -= 0.8,
-                // .RIGHT => state.eye.y += 0.8,
-
-                // .UP => state.eye.z -= 0.8,
-                // .DOWN => state.eye.z += 0.8,
-
-                // .A => state.eye.x -= 0.8,
-                // .D => state.eye.x += 0.8,
-
                 .Q => sapp.quit(),
                 else => {},
             }

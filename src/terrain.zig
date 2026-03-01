@@ -150,7 +150,7 @@ pub fn ui() void {
             if (ig.igBeginTabItem("Camera", null, 0)) {
                 _ = ig.igSliderFloat("Camera Theta", &state.camera_theta, 0.0, 2 * std.math.pi);
                 _ = ig.igSliderFloat("Camera Phi", &state.camera_phi, 0.0, 2 * std.math.pi);
-                _ = ig.igSliderFloat("Camera Radius", &state.camera_radius, 10.0, 200.0);
+                _ = ig.igSliderFloat("Camera Radius", &state.camera_radius, 10.0, 300.0);
                 ig.igEndTabItem();
             }
             if (ig.igBeginTabItem("Meta", null, 0)) {
