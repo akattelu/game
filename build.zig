@@ -18,12 +18,39 @@ const Options = struct {
 
 pub fn build(b: *std.Build) !void {
     const release = b.option(bool, "release", "Run a full release build across all targets") orelse false;
-    const web = b.option(bool, "web", "Build for web. If used with release wil") orelse false;
+    const web = b.option(bool, "web", "Build for web. Defaults to using webgpu.") orelse false;
     if (web and release) _ = fatal("Web option is a no-op when running build in release mode\n\n", .{});
 
     switch (release) {
         true => {
-            //
+            print("Running in release build mode\n", .{});
+            const native_targets: []const std.Target.Query = &.{
+                .{},
+                .{ .cpu_arch = .x86_64, .os_tag = .windows },
+            };
+            for (native_targets) |target| {
+                const options = setupDeps(b, b.resolveTargetQuery(target), .ReleaseSmall, .none);
+                const shaders = try compileShaders(b, options);
+
+                const exe = try buildNative(b, options);
+                b.installArtifact(exe);
+                exe.step.dependOn(shaders);
+            }
+            { // Web
+                // Web release is only webGL for now
+                // emLinkStep manages the output path and hardcodes the `web` part
+                // so I'm only doing one webGL here even though webgpu works
+                const options = setupDeps(
+                    b,
+                    b.resolveTargetQuery(.{ .os_tag = .emscripten, .cpu_arch = .wasm32 }),
+                    b.standardOptimizeOption(.{}),
+                    .webgl,
+                );
+                const shaders = try compileShaders(b, options);
+                const web_artifacts = try buildWeb(b, options, .webgl, true);
+                web_artifacts.dependOn(shaders);
+                b.getInstallStep().dependOn(web_artifacts);
+            }
         },
         false => {
             switch (web) {
@@ -33,24 +60,19 @@ pub fn build(b: *std.Build) !void {
                     const shaders = try compileShaders(b, options);
                     const web_artifacts = try buildWeb(b, options, .webgpu, true);
                     web_artifacts.dependOn(shaders);
-                    // b.installArtifact(web_artifacts);
-
                     b.getInstallStep().dependOn(web_artifacts);
                 },
                 false => {
                     print("Running in standard build mode\n", .{});
-                    const options = setupDeps(b, b.standardTargetOptions(.{}), b.standardOptimizeOption(.{}), .none);
+                    const target = b.standardTargetOptions(.{});
+                    const options = setupDeps(b, target, b.standardOptimizeOption(.{}), .none);
                     const shaders = try compileShaders(b, options);
                     const exe = try buildNative(b, options);
 
                     const run_step = b.step("run", "Run the app");
                     const test_step = b.step("test", "Run tests");
-                    exe.step.dependOn(shaders);
 
-                    const exe_tests = b.addTest(.{
-                        .name = "game-tests",
-                        .root_module = exe.root_module,
-                    });
+                    const exe_tests = b.addTest(.{ .name = "game-tests", .root_module = exe.root_module });
                     const run_exe_tests = b.addRunArtifact(exe_tests);
 
                     const run_cmd = b.addRunArtifact(exe);
@@ -58,32 +80,29 @@ pub fn build(b: *std.Build) !void {
                         run_cmd.addArgs(args);
                     }
 
-                    b.installArtifact(exe);
+                    const exe_install = b.addInstallArtifact(exe, .{ .dest_sub_path = "game" });
+                    const tests_install = b.addInstallArtifact(exe_tests, .{});
 
+                    // exe_install.step.dependOn(b.getInstallStep());
+                    b.getInstallStep().dependOn(&exe_install.step);
+                    b.getInstallStep().dependOn(&tests_install.step);
+                    exe.step.dependOn(shaders);
                     run_step.dependOn(&run_cmd.step);
-                    run_cmd.step.dependOn(b.getInstallStep());
+                    run_exe_tests.step.dependOn(&tests_install.step);
+                    run_cmd.step.dependOn(&exe_install.step);
                     test_step.dependOn(&run_exe_tests.step);
                 },
             }
-            //
         },
-    }
-}
-
-fn buildFor(b: *std.Build, options: Options) !*std.Build.Step.Compile {
-    if (!options.target.result.cpu.arch.isWasm()) {
-        const exe = buildNative(b, options);
-        return exe;
-    } else {
-        const lib = try buildWeb(b, options);
-        return lib;
     }
 }
 
 fn buildNative(b: *std.Build, options: Options) !*std.Build.Step.Compile {
     const root_mod = options.root_mod;
+    const triple = try options.target.result.linuxTriple(b.allocator);
+    const name = try std.fmt.allocPrint(b.allocator, "game-{s}", .{triple});
     const exe = b.addExecutable(.{
-        .name = "game",
+        .name = name,
         .root_module = root_mod,
     });
 
