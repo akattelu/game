@@ -52,7 +52,7 @@ const state = struct {
     pub var camera_radius: f32 = 175.0;
 };
 
-pub fn vertices(allocator: std.mem.Allocator) sg.Range {
+pub fn vertices(allocator: std.mem.Allocator) []Vertex {
     const n: usize = @intCast(state.mesh_vertices);
     var vs: std.ArrayList(Vertex) = .empty;
     const nf: f32 = @floatFromInt(n);
@@ -91,11 +91,10 @@ pub fn vertices(allocator: std.mem.Allocator) sg.Range {
 
     populateNormals(&vs.items, n);
 
-    const ptr = vs.toOwnedSlice(allocator) catch unreachable;
-    return sg.asRange(ptr);
+    return vs.toOwnedSlice(allocator) catch unreachable;
 }
 
-pub inline fn indices(allocator: std.mem.Allocator) sg.Range {
+pub inline fn indices(allocator: std.mem.Allocator) []u16 {
     const n: usize = @intCast(state.mesh_vertices);
     var idx: std.ArrayList(u16) = .empty;
     var count: usize = 0;
@@ -117,8 +116,7 @@ pub inline fn indices(allocator: std.mem.Allocator) sg.Range {
             count += 6;
         }
     }
-    const ptr = idx.toOwnedSlice(allocator) catch unreachable;
-    return sg.asRange(ptr);
+    return idx.toOwnedSlice(allocator) catch unreachable;
 }
 
 pub fn ui() void {

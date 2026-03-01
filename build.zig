@@ -137,8 +137,8 @@ fn buildWeb(b: *std.Build, options: Options, web_graphics: WebGraphicsMode, add_
         .use_emmalloc = true,
         .use_filesystem = false,
         .extra_args = &.{
-            "-sSTACK_SIZE=3MB",
-            "-sINITIAL_MEMORY=64MB",
+            "-sSTACK_SIZE=2MB",
+            "-sINITIAL_MEMORY=6MB",
             "-sALLOW_MEMORY_GROWTH=1",
             "-sASSERTIONS",
         },

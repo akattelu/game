@@ -25,6 +25,7 @@ const state = struct {
     var bind: sg.Bindings = .{};
 
     var terrain_state = terrain.state;
+    var last_vertices_count: c_int = terrain_state.mesh_vertices;
 
     var mouse_down: bool = false;
 };
@@ -44,14 +45,15 @@ export fn init() void {
         .logger = .{ .func = slog.func },
     });
 
-    const range = terrain.vertices(allocator);
-    state.bind.vertex_buffers[0] = sg.makeBuffer(.{ .usage = .{ .dynamic_update = true, .vertex_buffer = true }, .size = range.size });
-
-    // cube index buffer
-    state.bind.index_buffer = sg.makeBuffer(.{
-        .usage = .{ .index_buffer = true },
-        .data = terrain.indices(allocator),
-    });
+    // Construct the grid mesh just so we can size the initial dynamic buffer
+    const mesh_vertices = terrain.vertices(allocator);
+    const mesh_indices = terrain.indices(allocator);
+    const vertices_range = sg.asRange(mesh_vertices);
+    const indices_range = sg.asRange(mesh_indices);
+    state.bind.vertex_buffers[0] = sg.makeBuffer(.{ .usage = .{ .dynamic_update = true, .vertex_buffer = true }, .size = vertices_range.size });
+    state.bind.index_buffer = sg.makeBuffer(.{ .usage = .{ .dynamic_update = true, .index_buffer = true }, .size = indices_range.size });
+    allocator.free(mesh_vertices);
+    allocator.free(mesh_indices);
 
     // create a small checker-board image and texture view
     state.bind.views[shd.VIEW_tex] = sg.makeView(.{
@@ -112,19 +114,17 @@ export fn frame() void {
 
     // Recreate terrain vertex buffer every frame
     // because the vertex count is a dynamic parameter
-    const terrain_frame = terrain.vertices(allocator);
-    sg.destroyBuffer(state.bind.vertex_buffers[0]);
-    state.bind.vertex_buffers[0] = sg.makeBuffer(.{
-        .usage = .{ .dynamic_update = true, .vertex_buffer = true },
-        .size = terrain_frame.size,
-    });
-    sg.updateBuffer(state.bind.vertex_buffers[0], terrain_frame);
+    const terrain_mesh_vertices = terrain.vertices(allocator);
+    const terrain_mesh_indices = terrain.indices(allocator);
+    defer allocator.free(terrain_mesh_vertices);
+    defer allocator.free(terrain_mesh_indices);
 
+    const vertices_range = sg.asRange(terrain_mesh_vertices);
+    const indices_range = sg.asRange(terrain_mesh_indices);
+    sg.destroyBuffer(state.bind.vertex_buffers[0]);
     sg.destroyBuffer(state.bind.index_buffer);
-    state.bind.index_buffer = sg.makeBuffer(.{
-        .usage = .{ .index_buffer = true },
-        .data = terrain.indices(allocator),
-    });
+    state.bind.vertex_buffers[0] = sg.makeBuffer(.{ .usage = .{ .vertex_buffer = true }, .data = vertices_range });
+    state.bind.index_buffer = sg.makeBuffer(.{ .usage = .{ .index_buffer = true }, .data = indices_range });
 
     // Setup shader params
     const fs_params: shd.FsParams = .{
