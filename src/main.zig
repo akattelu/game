@@ -170,7 +170,9 @@ export fn cleanup() void {
 }
 
 export fn event(e: [*c]const sapp.Event) callconv(.c) void {
-    _ = simgui.handleEvent(e.*);
+    if (simgui.handleEvent(e.*)) {
+        return;
+    }
     const s = terrain.getState();
     switch (e.*.type) {
         .MOUSE_SCROLL => {
