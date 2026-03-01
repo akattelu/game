@@ -25,10 +25,12 @@ pub const Vertex = extern struct {
 };
 
 const state = struct {
+    // General
     pub var mesh_vertices: c_int = 100;
     pub var apply_texture: bool = false;
     pub var seed: f32 = 0.0;
 
+    // Lighting
     pub var apply_lighting: bool = true;
     pub var ambient_intensity: f32 = 0.2;
     pub var normal_cell_spacing: f32 = 2.0;
@@ -36,11 +38,18 @@ const state = struct {
     pub var elevation_angle: f32 = 0.0;
     pub var light_color: Vec3 = Vec3.ones();
 
+    // Noise
     pub var frequency: f32 = 0.05;
     pub var amplitude: f32 = 50.0;
     pub var lacunarity: f32 = 8.0;
     pub var persistence: f32 = 0.5;
     pub var octaves: c_int = 4;
+
+    // Camera
+    pub var eye: Vec3 = .{ .x = 110.0, .y = 125.0, .z = 30.0 };
+    pub var camera_theta: f32 = std.math.pi / 8.0;
+    pub var camera_phi: f32 = std.math.pi / 8.0;
+    pub var camera_radius: f32 = 175.0;
 };
 
 pub fn vertices(allocator: std.mem.Allocator) sg.Range {
@@ -138,6 +147,12 @@ pub fn ui() void {
                 _ = ig.igColorEdit3("Lighting Color", @ptrCast(&state.light_color), 0);
                 ig.igEndTabItem();
             }
+            if (ig.igBeginTabItem("Camera", null, 0)) {
+                _ = ig.igSliderFloat("Camera Theta", &state.camera_theta, 0.0, 2 * std.math.pi);
+                _ = ig.igSliderFloat("Camera Phi", &state.camera_phi, 0.0, 2 * std.math.pi);
+                _ = ig.igSliderFloat("Camera Radius", &state.camera_radius, 10.0, 200.0);
+                ig.igEndTabItem();
+            }
             if (ig.igBeginTabItem("Meta", null, 0)) {
                 _ = ig.igBulletText("Dear ImGui Version: %s", ig.IMGUI_VERSION);
                 ig.igEndTabItem();
@@ -168,6 +183,19 @@ fn index(i: usize, j: usize, n: usize) usize {
 
 pub fn getState() @TypeOf(state) {
     return state;
+}
+
+pub fn getVsParams() shd.VsParams {
+    const r = state.camera_radius;
+    const phi = state.camera_phi;
+    const theta = state.camera_theta;
+    return .{
+        .mvp = Mat4.mvp(Vec3.new(
+            r * @sin(phi) * @cos(theta),
+            r * @cos(phi),
+            r * @sin(phi) * @sin(theta),
+        ), sapp.widthf(), sapp.heightf()),
+    };
 }
 
 pub fn getObjectCount() u32 {

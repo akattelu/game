@@ -25,8 +25,6 @@ const state = struct {
     var bind: sg.Bindings = .{};
 
     var terrain_state = terrain.state;
-
-    var eye: Vec3 = .{ .x = 110.0, .y = 125.0, .z = 30.0 };
 };
 
 export fn init() void {
@@ -127,9 +125,6 @@ export fn frame() void {
     });
 
     // Setup shader params
-    const vs_params: shd.VsParams = .{
-        .mvp = Mat4.mvp(state.eye, sapp.widthf(), sapp.heightf()),
-    };
     const fs_params: shd.FsParams = .{
         .light_dir = Vec3.new(
             @cos(terrain_state.elevation_angle) * @sin(terrain_state.azimuth_angle),
@@ -155,7 +150,7 @@ export fn frame() void {
     // Pipeline
     sg.applyPipeline(state.pipeline);
     sg.applyBindings(state.bind);
-    sg.applyUniforms(shd.UB_vs_params, sg.asRange(&vs_params));
+    sg.applyUniforms(shd.UB_vs_params, sg.asRange(&terrain.getVsParams()));
     sg.applyUniforms(shd.UB_fs_params, sg.asRange(&fs_params));
 
     // Draw
@@ -177,14 +172,14 @@ export fn event(e: [*c]const sapp.Event) callconv(.c) void {
     switch (e.*.type) {
         .KEY_DOWN => {
             switch (e.*.key_code) {
-                .LEFT => state.eye.y -= 0.8,
-                .RIGHT => state.eye.y += 0.8,
+                // .LEFT => state.eye.y -= 0.8,
+                // .RIGHT => state.eye.y += 0.8,
 
-                .UP => state.eye.z -= 0.8,
-                .DOWN => state.eye.z += 0.8,
+                // .UP => state.eye.z -= 0.8,
+                // .DOWN => state.eye.z += 0.8,
 
-                .A => state.eye.x -= 0.8,
-                .D => state.eye.x += 0.8,
+                // .A => state.eye.x -= 0.8,
+                // .D => state.eye.x += 0.8,
 
                 .Q => sapp.quit(),
                 else => {},
