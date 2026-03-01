@@ -25,18 +25,19 @@ pub const Vertex = extern struct {
 };
 
 const state = struct {
-    var mesh_vertices: c_int = 100;
-    var apply_texture: bool = false;
-    var seed: f32 = 0.0;
+    pub var mesh_vertices: c_int = 100;
+    pub var apply_texture: bool = false;
+    pub var seed: f32 = 0.0;
 
-    var apply_lighting: bool = true;
-    var normal_cell_spacing: f32 = 2.0;
+    pub var apply_lighting: bool = true;
+    pub var ambient_intensity: f32 = 0.2;
+    pub var normal_cell_spacing: f32 = 2.0;
 
-    var frequency: f32 = 0.05;
-    var amplitude: f32 = 50.0;
-    var lacunarity: f32 = 8.0;
-    var persistence: f32 = 0.5;
-    var octaves: c_int = 4;
+    pub var frequency: f32 = 0.05;
+    pub var amplitude: f32 = 50.0;
+    pub var lacunarity: f32 = 8.0;
+    pub var persistence: f32 = 0.5;
+    pub var octaves: c_int = 4;
 };
 
 pub fn vertices(allocator: std.mem.Allocator) sg.Range {
@@ -128,6 +129,7 @@ pub fn ui() void {
             if (ig.igBeginTabItem("Lighting", null, 0)) {
                 _ = ig.igCheckbox("Apply Lighting?", &state.apply_lighting);
                 _ = ig.igSliderFloat("Cell Spacing", &state.normal_cell_spacing, 0.01, 10.0);
+                _ = ig.igSliderFloat("Ambient Light Intensity", &state.ambient_intensity, 0.1, 1.0);
                 ig.igEndTabItem();
             }
             if (ig.igBeginTabItem("Meta", null, 0)) {
@@ -158,15 +160,11 @@ fn index(i: usize, j: usize, n: usize) usize {
     return (i * n) + j;
 }
 
+pub fn getState() @TypeOf(state) {
+    return state;
+}
+
 pub fn getObjectCount() u32 {
     const n: u32 = @intCast(state.mesh_vertices);
     return (n - 1) * (n - 1) * 6;
-}
-
-pub fn shouldUseTexture() f32 {
-    return if (state.apply_texture) 1.0 else 0.0;
-}
-
-pub fn shouldUseLighting() f32 {
-    return if (state.apply_lighting) 1.0 else 0.0;
 }

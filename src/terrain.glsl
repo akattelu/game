@@ -32,6 +32,7 @@ layout(binding=1) uniform fs_params {
     vec3 light_dir;
     float use_texture;
     float use_lighting;
+    float ambient_intensity;
 };
 
 in vec4 color;
@@ -45,8 +46,7 @@ void main() {
    
     if (use_lighting ==  1.0) {
         float diffuse = max(dot(normalize(v_normal), normalize(light_dir)), 0.0);
-        float ambient = 0.4;
-        frag_color = mix(color, color * tex_color, use_texture) * (diffuse + ambient);
+        frag_color = mix(color, color * tex_color, use_texture) * (diffuse + ambient_intensity);
     } else {
         frag_color = mix(color, color * tex_color, use_texture);
     }

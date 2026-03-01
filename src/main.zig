@@ -109,6 +109,7 @@ export fn init() void {
 export fn frame() void {
     const allocator = if (builtin.cpu.arch.isWasm()) std.heap.c_allocator else std.heap.smp_allocator;
     const terrain_frame = terrain.vertices(allocator);
+    const terrain_state = terrain.getState();
     sg.destroyBuffer(state.bind.vertex_buffers[0]);
     state.bind.vertex_buffers[0] = sg.makeBuffer(.{
         .usage = .{ .dynamic_update = true, .vertex_buffer = true },
@@ -120,8 +121,9 @@ export fn frame() void {
     };
     const fs_params: shd.FsParams = .{
         .light_dir = Vec3.new(0, 50.0, 0),
-        .use_texture = terrain.shouldUseTexture(),
-        .use_lighting = terrain.shouldUseLighting(),
+        .use_texture = if (terrain_state.apply_texture) 1.0 else 0.0,
+        .use_lighting = if (terrain_state.apply_lighting) 1.0 else 0.0,
+        .ambient_intensity = terrain_state.ambient_intensity,
     };
 
     sg.destroyBuffer(state.bind.index_buffer);
