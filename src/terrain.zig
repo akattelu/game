@@ -27,12 +27,13 @@ pub const Vertex = extern struct {
 const state = struct {
     var mesh_vertices: c_int = 100;
     var apply_texture: bool = false;
+    var seed: f32 = 0.0;
+
     var apply_lighting: bool = true;
+    var normal_cell_spacing: f32 = 2.0;
 
     var frequency: f32 = 0.05;
     var amplitude: f32 = 50.0;
-
-    var seed: f32 = 0.0;
     var lacunarity: f32 = 8.0;
     var persistence: f32 = 0.5;
     var octaves: c_int = 4;
@@ -108,7 +109,7 @@ pub inline fn indices(allocator: std.mem.Allocator) sg.Range {
 }
 
 pub fn ui() void {
-    if (ig.igBegin("Terrain Playground", 1, ig.ImGuiWindowFlags_AlwaysAutoResize)) {
+    if (ig.igBegin("Terrain Playground", null, ig.ImGuiWindowFlags_AlwaysAutoResize)) {
         if (ig.igBeginTabBar("Settings", 0)) {
             if (ig.igBeginTabItem("General", null, 0)) {
                 _ = ig.igSliderInt("Side Length", &state.mesh_vertices, 2, 200);
@@ -126,6 +127,7 @@ pub fn ui() void {
             }
             if (ig.igBeginTabItem("Lighting", null, 0)) {
                 _ = ig.igCheckbox("Apply Lighting?", &state.apply_lighting);
+                _ = ig.igSliderFloat("Cell Spacing", &state.normal_cell_spacing, 0.01, 10.0);
                 ig.igEndTabItem();
             }
             if (ig.igBeginTabItem("Meta", null, 0)) {
@@ -134,8 +136,8 @@ pub fn ui() void {
             }
             ig.igEndTabBar();
         }
+        ig.igEnd();
     }
-    ig.igEnd();
 }
 
 fn populateNormals(vxs: *[]Vertex, n: usize) void {
@@ -146,7 +148,7 @@ fn populateNormals(vxs: *[]Vertex, n: usize) void {
             const hr: f32 = vs[index(@min(i + 1, n - 1), j, n)].y;
             const hd: f32 = vs[index(i, @max(j, 1) - 1, n)].y;
             const hu: f32 = vs[index(i, @min(j + 1, n - 1), n)].y;
-            const normal = Vec3.norm(Vec3.new(hl - hr, 2.0, hd - hu));
+            const normal = Vec3.norm(Vec3.new(hl - hr, state.normal_cell_spacing, hd - hu));
             vs[index(i, j, n)].normal = normal;
         }
     }
