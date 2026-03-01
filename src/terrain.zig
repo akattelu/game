@@ -25,9 +25,9 @@ pub const Vertex = extern struct {
 };
 
 const state = struct {
-    var mesh_vertices: c_int = 10;
+    var mesh_vertices: c_int = 100;
     var apply_texture: bool = false;
-    var apply_lighting: bool = false;
+    var apply_lighting: bool = true;
 
     var frequency: f32 = 0.05;
     var amplitude: f32 = 50.0;
@@ -108,22 +108,32 @@ pub inline fn indices(allocator: std.mem.Allocator) sg.Range {
 }
 
 pub fn ui() void {
-    if (ig.igBegin("Terrain Playground", 1, ig.ImGuiWindowFlags_None)) {
-        _ = ig.igText("Parameters", ig.IMGUI_VERSION);
-        _ = ig.igSliderInt("Side Length", &state.mesh_vertices, 2, 200);
-        ig.igSeparator();
-        _ = ig.igSliderFloat("Frequency", &state.frequency, 0.0, 1.0);
-        _ = ig.igSliderFloat("Amplitude", &state.amplitude, 0.0, 100.0);
-        _ = ig.igSliderInt("Octaves", &state.octaves, 1, 8);
-        _ = ig.igSliderFloat("Lacunarity", &state.lacunarity, 1.0, 4.0);
-        _ = ig.igSliderFloat("Persistence", &state.persistence, 0.1, 1.0);
-        ig.igSeparator();
-        _ = ig.igCheckbox("Apply Lighting?", &state.apply_lighting);
-        _ = ig.igCheckbox("Apply Texture?", &state.apply_texture);
-        _ = ig.igSliderFloat("Seed", &state.seed, 0.0, 1000.0);
-        ig.igSeparator();
-        _ = ig.igText("Metadata", ig.IMGUI_VERSION);
-        _ = ig.igBulletText("Dear ImGui Version: %s", ig.IMGUI_VERSION);
+    if (ig.igBegin("Terrain Playground", 1, ig.ImGuiWindowFlags_AlwaysAutoResize)) {
+        if (ig.igBeginTabBar("Settings", 0)) {
+            if (ig.igBeginTabItem("General", null, 0)) {
+                _ = ig.igSliderInt("Side Length", &state.mesh_vertices, 2, 200);
+                _ = ig.igCheckbox("Apply Texture?", &state.apply_texture);
+                _ = ig.igSliderFloat("Seed", &state.seed, 0.0, 1000.0);
+                ig.igEndTabItem();
+            }
+            if (ig.igBeginTabItem("Noise", null, 0)) {
+                _ = ig.igSliderFloat("Frequency", &state.frequency, 0.0, 1.0);
+                _ = ig.igSliderFloat("Amplitude", &state.amplitude, 0.0, 100.0);
+                _ = ig.igSliderInt("Octaves", &state.octaves, 1, 8);
+                _ = ig.igSliderFloat("Lacunarity", &state.lacunarity, 1.0, 4.0);
+                _ = ig.igSliderFloat("Persistence", &state.persistence, 0.1, 1.0);
+                ig.igEndTabItem();
+            }
+            if (ig.igBeginTabItem("Lighting", null, 0)) {
+                _ = ig.igCheckbox("Apply Lighting?", &state.apply_lighting);
+                ig.igEndTabItem();
+            }
+            if (ig.igBeginTabItem("Meta", null, 0)) {
+                _ = ig.igBulletText("Dear ImGui Version: %s", ig.IMGUI_VERSION);
+                ig.igEndTabItem();
+            }
+            ig.igEndTabBar();
+        }
     }
     ig.igEnd();
 }

@@ -26,7 +26,7 @@ const state = struct {
 
     var terrain_state = terrain.state;
 
-    var eye: Vec3 = .{ .x = 110.0, .y = 140.0, .z = 30.0 };
+    var eye: Vec3 = .{ .x = 110.0, .y = 125.0, .z = 30.0 };
 };
 
 export fn init() void {
