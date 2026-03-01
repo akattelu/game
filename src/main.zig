@@ -73,6 +73,8 @@ export fn init() void {
         },
     });
 
+    state.bind.samplers[shd.SMP_smp] = sg.makeSampler(.{});
+
     state.pipeline = sg.makePipeline(
         .{
             .shader = sg.makeShader(shd.terrainShaderDesc(sg.queryBackend())),
@@ -92,8 +94,6 @@ export fn init() void {
             .cull_mode = .NONE,
         },
     );
-
-    state.bind.samplers[shd.SMP_smp] = sg.makeSampler(.{});
 
     state.pass_action.colors[0] = .{
         .load_action = .CLEAR,
@@ -115,8 +115,9 @@ export fn frame() void {
         .size = terrain_frame.size,
     });
     sg.updateBuffer(state.bind.vertex_buffers[0], terrain_frame);
-    const vs_params = .{
+    const vs_params: shd.VsParams = .{
         .mvp = Mat4.mvp(state.eye, sapp.widthf(), sapp.heightf()),
+        .use_texture0 = terrain.shouldUseTexture(),
     };
 
     sg.destroyBuffer(state.bind.index_buffer);
