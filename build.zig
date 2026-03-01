@@ -40,16 +40,18 @@ pub fn build(b: *std.Build) !void {
                 // Web release is only webGL for now
                 // emLinkStep manages the output path and hardcodes the `web` part
                 // so I'm only doing one webGL here even though webgpu works
-                const options = setupDeps(
-                    b,
-                    b.resolveTargetQuery(.{ .os_tag = .emscripten, .cpu_arch = .wasm32 }),
-                    b.standardOptimizeOption(.{}),
-                    .webgl,
-                );
-                const shaders = try compileShaders(b, options);
-                const web_artifacts = try buildWeb(b, options, .webgl, true);
-                web_artifacts.dependOn(shaders);
-                b.getInstallStep().dependOn(web_artifacts);
+                for ([_]WebGraphicsMode{ .webgl, .webgpu }) |mode| {
+                    const options = setupDeps(
+                        b,
+                        b.resolveTargetQuery(.{ .os_tag = .emscripten, .cpu_arch = .wasm32 }),
+                        .ReleaseSafe,
+                        mode,
+                    );
+                    const shaders = try compileShaders(b, options);
+                    const web_artifacts = try buildWeb(b, options, mode, false);
+                    web_artifacts.dependOn(shaders);
+                    b.getInstallStep().dependOn(web_artifacts);
+                }
             }
         },
         false => {
@@ -110,8 +112,9 @@ fn buildNative(b: *std.Build, options: Options) !*std.Build.Step.Compile {
 }
 
 fn buildWeb(b: *std.Build, options: Options, web_graphics: WebGraphicsMode, add_run_step: bool) !*std.Build.Step {
+    const name = try std.fmt.allocPrint(b.allocator, "game-{s}", .{@tagName(web_graphics)});
     const lib = b.addLibrary(.{
-        .name = "game",
+        .name = name,
         .root_module = options.root_mod,
     });
 
