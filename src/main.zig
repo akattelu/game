@@ -119,6 +119,9 @@ export fn frame() void {
         .mvp = Mat4.mvp(state.eye, sapp.widthf(), sapp.heightf()),
         .use_texture0 = terrain.shouldUseTexture(),
     };
+    const fs_params: shd.FsParams = .{
+        .u_color = Vec3.new(0.4, 1.0, 1.0),
+    };
 
     sg.destroyBuffer(state.bind.index_buffer);
     state.bind.index_buffer = sg.makeBuffer(.{
@@ -139,6 +142,7 @@ export fn frame() void {
     sg.applyPipeline(state.pipeline);
     sg.applyBindings(state.bind);
     sg.applyUniforms(shd.UB_vs_params, sg.asRange(&vs_params));
+    sg.applyUniforms(shd.UB_fs_params, sg.asRange(&fs_params));
 
     sg.draw(0, terrain.getObjectCount(), 1);
     sdtx.draw();

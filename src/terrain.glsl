@@ -1,5 +1,6 @@
 @header const m = @import("math.zig")
 @ctype mat4 m.Mat4
+@ctype vec3 m.Vec3
 
 @vs vs
 layout(binding = 0) uniform vs_params {
@@ -25,9 +26,12 @@ void main() {
 @end
 
 @fs fs
-layout(binding = 0) uniform texture2D tex;
-layout(binding = 0) uniform sampler smp;
+layout(binding=0) uniform texture2D tex;
+layout(binding=0) uniform sampler smp;
 
+layout(binding=1) uniform fs_params {
+    vec3 u_color;
+};
 
 in vec4 color;
 in vec2 uv;
@@ -37,7 +41,7 @@ out vec4 frag_color;
 
 void main() {
     vec4 tex_color =  texture(sampler2D(tex, smp), uv);
-    frag_color = mix(color, color * tex_color, use_texture);
+    frag_color = mix(color, color * tex_color, use_texture) * vec4(u_color, 1.0);
 }
 @end
 
