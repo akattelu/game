@@ -27,6 +27,8 @@ pub const Vertex = extern struct {
 const state = struct {
     var mesh_vertices: c_int = 10;
     var apply_texture: bool = false;
+    var apply_lighting: bool = false;
+
     var frequency: f32 = 0.05;
     var amplitude: f32 = 50.0;
 
@@ -116,6 +118,7 @@ pub fn ui() void {
         _ = ig.igSliderFloat("Lacunarity", &state.lacunarity, 1.0, 4.0);
         _ = ig.igSliderFloat("Persistence", &state.persistence, 0.1, 1.0);
         ig.igSeparator();
+        _ = ig.igCheckbox("Apply Lighting?", &state.apply_lighting);
         _ = ig.igCheckbox("Apply Texture?", &state.apply_texture);
         _ = ig.igSliderFloat("Seed", &state.seed, 0.0, 1000.0);
         ig.igSeparator();
@@ -150,4 +153,8 @@ pub fn getObjectCount() u32 {
 
 pub fn shouldUseTexture() f32 {
     return if (state.apply_texture) 1.0 else 0.0;
+}
+
+pub fn shouldUseLighting() f32 {
+    return if (state.apply_lighting) 1.0 else 0.0;
 }

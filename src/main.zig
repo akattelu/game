@@ -121,6 +121,7 @@ export fn frame() void {
     const fs_params: shd.FsParams = .{
         .light_dir = Vec3.new(0, 50.0, 0),
         .use_texture = terrain.shouldUseTexture(),
+        .use_lighting = terrain.shouldUseLighting(),
     };
 
     sg.destroyBuffer(state.bind.index_buffer);

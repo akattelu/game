@@ -31,6 +31,7 @@ layout(binding=0) uniform sampler smp;
 layout(binding=1) uniform fs_params {
     vec3 light_dir;
     float use_texture;
+    float use_lighting;
 };
 
 in vec4 color;
@@ -41,8 +42,14 @@ out vec4 frag_color;
 
 void main() {
     vec4 tex_color = texture(sampler2D(tex, smp), uv);
-    float diffuse = max(dot(normalize(v_normal), normalize(light_dir)), 0.0);
-    frag_color = mix(color, color * tex_color, use_texture) * (0.2 + diffuse);
+   
+    if (use_lighting ==  1.0) {
+        float diffuse = max(dot(normalize(v_normal), normalize(light_dir)), 0.0);
+        float ambient = 0.4;
+        frag_color = mix(color, color * tex_color, use_texture) * (diffuse + ambient);
+    } else {
+        frag_color = mix(color, color * tex_color, use_texture);
+    }
 }
 @end
 
