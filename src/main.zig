@@ -98,9 +98,9 @@ export fn init() void {
     state.pass_action.colors[0] = .{
         .load_action = .CLEAR,
         .clear_value = .{
-            .r = 0.25,
-            .g = 0.5,
-            .b = 0.75,
+            .r = 0.0,
+            .g = 0.0,
+            .b = 0.0,
             .a = 1,
         },
     };
@@ -110,8 +110,6 @@ export fn frame() void {
     const allocator = if (builtin.cpu.arch.isWasm()) std.heap.c_allocator else std.heap.smp_allocator;
     const terrain_state = terrain.getState();
 
-    // Recreate terrain vertex buffer every frame
-    // because the vertex count is a dynamic parameter
     allocator.free(state.vertices.?);
     allocator.free(state.indices.?);
 
@@ -126,7 +124,7 @@ export fn frame() void {
     sdtx.print("Reallocating {d} vertices\n", .{terrain_state.mesh_vertices});
 
     // Setup imgui
-    sg.beginPass(.{ .swapchain = sglue.swapchain() });
+    sg.beginPass(.{ .swapchain = sglue.swapchain(), .action = state.pass_action });
     simgui.newFrame(.{
         .width = sapp.width(),
         .height = sapp.height(),
