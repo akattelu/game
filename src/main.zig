@@ -21,7 +21,7 @@ const shd = @import("terrain.glsl.zig");
 
 const state = struct {
     var pass_action: sg.PassAction = .{};
-    var pipeline: sg.Pipeline = .{};
+    var pipelines: [2]sg.Pipeline = @splat(.{});
     var bind: sg.Bindings = .{};
 
     var vertices: ?[]terrain.Vertex = null;
@@ -75,25 +75,8 @@ export fn init() void {
 
     state.bind.samplers[shd.SMP_smp] = sg.makeSampler(.{});
 
-    state.pipeline = sg.makePipeline(
-        .{
-            .shader = sg.makeShader(shd.terrainShaderDesc(sg.queryBackend())),
-            .layout = init: {
-                var l = sg.VertexLayoutState{};
-                l.attrs[shd.ATTR_terrain_position].format = .FLOAT3;
-                l.attrs[shd.ATTR_terrain_color0].format = .UBYTE4N;
-                l.attrs[shd.ATTR_terrain_texcoord0].format = .SHORT2N;
-                l.attrs[shd.ATTR_terrain_normal].format = .FLOAT3;
-                break :init l;
-            },
-            .index_type = .UINT16,
-            .depth = .{
-                .compare = .LESS_EQUAL,
-                .write_enabled = true,
-            },
-            .cull_mode = .NONE,
-        },
-    );
+    state.pipelines[0] = terrain.cpuPipeline();
+    state.pipelines[1] = terrain.gpuPipeline();
 
     state.pass_action.colors[0] = .{
         .load_action = .CLEAR,
@@ -138,7 +121,8 @@ export fn frame() void {
     terrain.ui();
 
     // Pipeline
-    sg.applyPipeline(state.pipeline);
+    const selected_pipeline = state.pipelines[@intFromBool(terrain_state.render_gpu)];
+    sg.applyPipeline(selected_pipeline);
     sg.applyBindings(state.bind);
     sg.applyUniforms(shd.UB_vs_params, sg.asRange(&terrain.getVsParams()));
     sg.applyUniforms(shd.UB_fs_params, sg.asRange(&terrain.getFsParams()));

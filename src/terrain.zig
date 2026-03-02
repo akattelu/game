@@ -25,6 +25,9 @@ pub const Vertex = extern struct {
 };
 
 const state = struct {
+    // Rendering Mode
+    pub var render_gpu: bool = false;
+
     // General
     pub var mesh_vertices: c_int = 200;
     pub var apply_texture: bool = false;
@@ -123,6 +126,7 @@ pub fn ui() void {
     if (ig.igBegin("Terrain Playground", null, ig.ImGuiWindowFlags_AlwaysAutoResize)) {
         if (ig.igBeginTabBar("Settings", 0)) {
             if (ig.igBeginTabItem("General", null, 0)) {
+                _ = ig.igCheckbox("Use GPU Noise and Lighting", &state.render_gpu);
                 _ = ig.igSliderInt("Side Length", &state.mesh_vertices, 2, 200);
                 _ = ig.igCheckbox("Apply Texture?", &state.apply_texture);
                 _ = ig.igSliderFloat("Seed", &state.seed, 0.0, 1000.0);
@@ -213,4 +217,47 @@ pub fn getFsParams() shd.FsParams {
 pub fn getObjectCount() u32 {
     const n: u32 = @intCast(state.mesh_vertices);
     return (n - 1) * (n - 1) * 6;
+}
+
+pub inline fn gpuPipeline() sg.Pipeline {
+    return sg.makePipeline(
+        .{
+            .label = "GPU Noise and Lighting Pipeline",
+            .shader = sg.makeShader(shd.terraingpuShaderDesc(sg.queryBackend())),
+            .layout = init: {
+                var l = sg.VertexLayoutState{};
+                l.attrs[shd.ATTR_terrain_position].format = .FLOAT3;
+                break :init l;
+            },
+            .index_type = .UINT16,
+            .depth = .{
+                .compare = .LESS_EQUAL,
+                .write_enabled = true,
+            },
+            .cull_mode = .NONE,
+        },
+    );
+}
+
+pub inline fn cpuPipeline() sg.Pipeline {
+    return sg.makePipeline(
+        .{
+            .label = "CPU Noise and Lighting Pipeline",
+            .shader = sg.makeShader(shd.terrainShaderDesc(sg.queryBackend())),
+            .layout = init: {
+                var l = sg.VertexLayoutState{};
+                l.attrs[shd.ATTR_terrain_position].format = .FLOAT3;
+                l.attrs[shd.ATTR_terrain_color0].format = .UBYTE4N;
+                l.attrs[shd.ATTR_terrain_texcoord0].format = .SHORT2N;
+                l.attrs[shd.ATTR_terrain_normal].format = .FLOAT3;
+                break :init l;
+            },
+            .index_type = .UINT16,
+            .depth = .{
+                .compare = .LESS_EQUAL,
+                .write_enabled = true,
+            },
+            .cull_mode = .NONE,
+        },
+    );
 }
