@@ -24,6 +24,12 @@ pub const Vertex = extern struct {
     normal: Vec3,
 };
 
+pub const FlatVertex = extern struct {
+    x: f32,
+    y: f32,
+    z: f32,
+};
+
 const state = struct {
     // Rendering Mode
     pub var render_gpu: bool = false;
@@ -97,6 +103,24 @@ pub fn vertices(allocator: std.mem.Allocator, count: c_int) []Vertex {
     return vs.toOwnedSlice(allocator) catch unreachable;
 }
 
+pub fn emptySquareMesh(allocator: std.mem.Allocator, count: c_int) []FlatVertex {
+    const n: usize = @intCast(count);
+    var vs: std.ArrayList(FlatVertex) = .empty;
+    const nf: f32 = @floatFromInt(n);
+    for (0..n) |i| {
+        for (0..n) |j| {
+            const x: f32 = @as(f32, @floatFromInt(i)) - (nf / 2.0);
+            const z: f32 = @as(f32, @floatFromInt(j)) - (nf / 2.0);
+            vs.append(allocator, .{
+                .x = x,
+                .y = 0.0,
+                .z = z,
+            }) catch unreachable;
+        }
+    }
+
+    return vs.toOwnedSlice(allocator) catch unreachable;
+}
 pub inline fn indices(allocator: std.mem.Allocator, index_count: c_int) []u16 {
     const n: usize = @intCast(index_count);
     var idx: std.ArrayList(u16) = .empty;
@@ -197,6 +221,24 @@ pub fn getVsParams() shd.VsParams {
             r * @cos(phi),
             r * @sin(phi) * @sin(theta),
         ), sapp.widthf(), sapp.heightf()),
+    };
+}
+
+pub fn getGPUVsParams() shd.VsGpuParams {
+    const r = state.camera_radius;
+    const phi = state.camera_phi;
+    const theta = state.camera_theta;
+    return .{
+        .mvp = Mat4.mvp(Vec3.new(
+            r * @sin(phi) * @cos(theta),
+            r * @cos(phi),
+            r * @sin(phi) * @sin(theta),
+        ), sapp.widthf(), sapp.heightf()),
+        .frequency = state.frequency,
+        .amplitude = state.amplitude,
+        .lacunarity = state.lacunarity,
+        .persistence = state.persistence,
+        .octaves = state.octaves,
     };
 }
 

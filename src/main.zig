@@ -22,7 +22,7 @@ const shd = @import("terrain.glsl.zig");
 const state = struct {
     var pass_action: sg.PassAction = .{};
     var pipelines: [2]sg.Pipeline = @splat(.{});
-    var bind: sg.Bindings = .{};
+    var bindings: [2]sg.Bindings = @splat(.{});
 
     var vertices: ?[]terrain.Vertex = null;
     var indices: ?[]u16 = null;
@@ -49,12 +49,33 @@ export fn init() void {
     state.vertices = terrain.vertices(allocator, 200);
     state.indices = terrain.indices(allocator, 200);
     const vertices_range = sg.asRange(state.vertices.?);
+    const flat_vertices_range = sg.asRange(terrain.emptySquareMesh(allocator, 200));
     const indices_range = sg.asRange(state.indices.?);
-    state.bind.vertex_buffers[0] = sg.makeBuffer(.{ .usage = .{ .dynamic_update = true, .vertex_buffer = true }, .size = vertices_range.size });
-    state.bind.index_buffer = sg.makeBuffer(.{ .usage = .{ .dynamic_update = true, .index_buffer = true }, .size = indices_range.size });
+    state.bindings[0].vertex_buffers[0] = sg.makeBuffer(.{ .usage = .{ .dynamic_update = true, .vertex_buffer = true }, .size = vertices_range.size });
+    state.bindings[1].vertex_buffers[0] = sg.makeBuffer(.{ .usage = .{ .dynamic_update = false, .vertex_buffer = true }, .data = flat_vertices_range });
+    state.bindings[0].index_buffer = sg.makeBuffer(.{ .usage = .{ .dynamic_update = true, .index_buffer = true }, .size = indices_range.size });
+    state.bindings[1].index_buffer = sg.makeBuffer(.{ .usage = .{ .dynamic_update = true, .index_buffer = true }, .size = indices_range.size });
 
     // create a small checker-board image and texture view
-    state.bind.views[shd.VIEW_tex] = sg.makeView(.{
+    state.bindings[0].views[shd.VIEW_tex] = sg.makeView(.{
+        .texture = .{
+            .image = sg.makeImage(.{
+                .width = 4,
+                .height = 4,
+                .data = init: {
+                    var data = sg.ImageData{};
+                    data.mip_levels[0] = sg.asRange(&[4 * 4]u32{
+                        0xFFFFFFFF, 0xFF000000, 0xFFFFFFFF, 0xFF000000,
+                        0xFF000000, 0xFFFFFFFF, 0xFF000000, 0xFFFFFFFF,
+                        0xFFFFFFFF, 0xFF000000, 0xFFFFFFFF, 0xFF000000,
+                        0xFF000000, 0xFFFFFFFF, 0xFF000000, 0xFFFFFFFF,
+                    });
+                    break :init data;
+                },
+            }),
+        },
+    });
+    state.bindings[1].views[shd.VIEW_tex] = sg.makeView(.{
         .texture = .{
             .image = sg.makeImage(.{
                 .width = 4,
@@ -73,7 +94,8 @@ export fn init() void {
         },
     });
 
-    state.bind.samplers[shd.SMP_smp] = sg.makeSampler(.{});
+    state.bindings[0].samplers[shd.SMP_smp] = sg.makeSampler(.{});
+    state.bindings[1].samplers[shd.SMP_smp] = sg.makeSampler(.{});
 
     state.pipelines[0] = terrain.cpuPipeline();
     state.pipelines[1] = terrain.gpuPipeline();
@@ -93,18 +115,20 @@ export fn frame() void {
     const allocator = if (builtin.cpu.arch.isWasm()) std.heap.c_allocator else std.heap.smp_allocator;
     const terrain_state = terrain.getState();
 
-    allocator.free(state.vertices.?);
-    allocator.free(state.indices.?);
+    if (!terrain_state.render_gpu) {
+        allocator.free(state.vertices.?);
+        allocator.free(state.indices.?);
 
-    state.vertices = terrain.vertices(allocator, terrain_state.mesh_vertices);
-    state.indices = terrain.indices(allocator, terrain_state.mesh_vertices);
+        state.vertices = terrain.vertices(allocator, terrain_state.mesh_vertices);
+        state.indices = terrain.indices(allocator, terrain_state.mesh_vertices);
 
-    const vertices_range = sg.asRange(state.vertices.?);
-    const indices_range = sg.asRange(state.indices.?);
-    sg.updateBuffer(state.bind.vertex_buffers[0], vertices_range);
-    sg.updateBuffer(state.bind.index_buffer, indices_range);
+        const vertices_range = sg.asRange(state.vertices.?);
+        const indices_range = sg.asRange(state.indices.?);
+        sg.updateBuffer(state.bindings[0].vertex_buffers[0], vertices_range);
+        sg.updateBuffer(state.bindings[0].index_buffer, indices_range);
 
-    sdtx.print("Reallocating {d} vertices\n", .{terrain_state.mesh_vertices});
+        sdtx.print("Reallocating {d} vertices\n", .{terrain_state.mesh_vertices});
+    }
 
     // Setup imgui
     sg.beginPass(.{ .swapchain = sglue.swapchain(), .action = state.pass_action });
@@ -121,11 +145,17 @@ export fn frame() void {
     terrain.ui();
 
     // Pipeline
-    const selected_pipeline = state.pipelines[@intFromBool(terrain_state.render_gpu)];
-    sg.applyPipeline(selected_pipeline);
-    sg.applyBindings(state.bind);
-    sg.applyUniforms(shd.UB_vs_params, sg.asRange(&terrain.getVsParams()));
-    sg.applyUniforms(shd.UB_fs_params, sg.asRange(&terrain.getFsParams()));
+    if (terrain_state.render_gpu) {
+        sg.applyPipeline(state.pipelines[1]);
+        sg.applyBindings(state.bindings[1]);
+        sg.applyUniforms(shd.UB_vs_gpu_params, sg.asRange(&terrain.getGPUVsParams()));
+        sg.applyUniforms(shd.UB_fs_params, sg.asRange(&terrain.getFsParams()));
+    } else {
+        sg.applyPipeline(state.pipelines[0]);
+        sg.applyBindings(state.bindings[0]);
+        sg.applyUniforms(shd.UB_vs_params, sg.asRange(&terrain.getVsParams()));
+        sg.applyUniforms(shd.UB_fs_params, sg.asRange(&terrain.getFsParams()));
+    }
 
     // Draw
     sg.draw(0, terrain.getObjectCount(), 1);

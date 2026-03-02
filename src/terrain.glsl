@@ -25,8 +25,14 @@ void main() {
 @end
 
 @vs vs_gpu
-layout(binding = 0) uniform vs_params {
+layout(binding = 0) uniform vs_gpu_params {
     mat4 mvp;
+
+    float frequency;
+    float amplitude;
+    float lacunarity;
+    float persistence;
+    int octaves;
 };
 
 in vec4 position;
