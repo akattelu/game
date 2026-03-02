@@ -45,6 +45,7 @@ void main() {
     gl_Position = mvp * position;
     uv = vec2(1.0, 1.0);
     v_normal = vec3(1.0, 1.0, 1.0);
+    color = vec4(0.0, 1.0, 1.0, 1.0);
 }
 @end
 
@@ -83,7 +84,7 @@ void main() {
 layout(binding=0) uniform texture2D tex;
 layout(binding=0) uniform sampler smp;
 
-layout(binding=1) uniform fs_params {
+layout(binding=1) uniform fs_gpu_params {
     vec3 light_dir;
     vec3 light_color;
     float use_texture;
@@ -106,6 +107,8 @@ void main() {
     } else {
         frag_color = mix(color, color * tex_color, use_texture);
     }
+
+    frag_color = color;
 }
 @end
 

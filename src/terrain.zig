@@ -113,7 +113,7 @@ pub fn emptySquareMesh(allocator: std.mem.Allocator, count: c_int) []FlatVertex 
             const z: f32 = @as(f32, @floatFromInt(j)) - (nf / 2.0);
             vs.append(allocator, .{
                 .x = x,
-                .y = 0.0,
+                .y = 1.0,
                 .z = z,
             }) catch unreachable;
         }
@@ -256,6 +256,20 @@ pub fn getFsParams() shd.FsParams {
     };
 }
 
+pub fn getGPUFsParams() shd.FsGpuParams {
+    return .{
+        .light_dir = Vec3.new(
+            @cos(state.elevation_angle) * @sin(state.azimuth_angle),
+            @sin(state.elevation_angle),
+            @cos(state.elevation_angle) * @cos(state.azimuth_angle),
+        ),
+        .light_color = state.light_color,
+        .use_texture = if (state.apply_texture) 1.0 else 0.0,
+        .use_lighting = if (state.apply_lighting) 1.0 else 0.0,
+        .ambient_intensity = state.ambient_intensity,
+    };
+}
+
 pub fn getObjectCount() u32 {
     const n: u32 = @intCast(state.mesh_vertices);
     return (n - 1) * (n - 1) * 6;
@@ -268,7 +282,7 @@ pub inline fn gpuPipeline() sg.Pipeline {
             .shader = sg.makeShader(shd.terraingpuShaderDesc(sg.queryBackend())),
             .layout = init: {
                 var l = sg.VertexLayoutState{};
-                l.attrs[shd.ATTR_terrain_position].format = .FLOAT3;
+                l.attrs[shd.ATTR_terrainGPU_position].format = .FLOAT3;
                 break :init l;
             },
             .index_type = .UINT16,

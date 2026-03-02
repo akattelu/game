@@ -25,6 +25,7 @@ const state = struct {
     var bindings: [2]sg.Bindings = @splat(.{});
 
     var vertices: ?[]terrain.Vertex = null;
+    var flat_vertices: ?[]terrain.FlatVertex = null;
     var indices: ?[]u16 = null;
 
     var mouse_down: bool = false;
@@ -51,10 +52,13 @@ export fn init() void {
     const vertices_range = sg.asRange(state.vertices.?);
     const flat_vertices_range = sg.asRange(terrain.emptySquareMesh(allocator, 200));
     const indices_range = sg.asRange(state.indices.?);
-    state.bindings[0].vertex_buffers[0] = sg.makeBuffer(.{ .usage = .{ .dynamic_update = true, .vertex_buffer = true }, .size = vertices_range.size });
-    state.bindings[1].vertex_buffers[0] = sg.makeBuffer(.{ .usage = .{ .dynamic_update = false, .vertex_buffer = true }, .data = flat_vertices_range });
-    state.bindings[0].index_buffer = sg.makeBuffer(.{ .usage = .{ .dynamic_update = true, .index_buffer = true }, .size = indices_range.size });
-    state.bindings[1].index_buffer = sg.makeBuffer(.{ .usage = .{ .dynamic_update = true, .index_buffer = true }, .size = indices_range.size });
+    state.bindings[0].vertex_buffers[0] = sg.makeBuffer(.{ .label = "CPU Heightmap", .usage = .{ .dynamic_update = true, .vertex_buffer = true }, .size = vertices_range.size });
+    state.bindings[1].vertex_buffers[0] = sg.makeBuffer(.{ .label = "GPU Terrain Mesh", .usage = .{ .dynamic_update = false, .vertex_buffer = true }, .data = flat_vertices_range });
+    const indexBuffer = sg.makeBuffer(.{ .label = "Mesh Index Buffer", .usage = .{ .dynamic_update = true, .index_buffer = true }, .size = indices_range.size });
+
+    // Keeping a shared buffer for these but technically they should be separate
+    state.bindings[0].index_buffer = indexBuffer;
+    state.bindings[1].index_buffer = indexBuffer;
 
     // create a small checker-board image and texture view
     state.bindings[0].views[shd.VIEW_tex] = sg.makeView(.{
@@ -103,7 +107,7 @@ export fn init() void {
     state.pass_action.colors[0] = .{
         .load_action = .CLEAR,
         .clear_value = .{
-            .r = 0.0,
+            .r = 1.0,
             .g = 0.0,
             .b = 0.0,
             .a = 1,
@@ -149,7 +153,7 @@ export fn frame() void {
         sg.applyPipeline(state.pipelines[1]);
         sg.applyBindings(state.bindings[1]);
         sg.applyUniforms(shd.UB_vs_gpu_params, sg.asRange(&terrain.getGPUVsParams()));
-        sg.applyUniforms(shd.UB_fs_params, sg.asRange(&terrain.getFsParams()));
+        sg.applyUniforms(shd.UB_fs_gpu_params, sg.asRange(&terrain.getGPUFsParams()));
     } else {
         sg.applyPipeline(state.pipelines[0]);
         sg.applyBindings(state.bindings[0]);
