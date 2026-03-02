@@ -26,7 +26,7 @@ pub const Vertex = extern struct {
 
 const state = struct {
     // General
-    pub var mesh_vertices: c_int = 100;
+    pub var mesh_vertices: c_int = 200;
     pub var apply_texture: bool = false;
     pub var seed: f32 = 0.0;
 
@@ -52,8 +52,8 @@ const state = struct {
     pub var camera_radius: f32 = 175.0;
 };
 
-pub fn vertices(allocator: std.mem.Allocator) []Vertex {
-    const n: usize = @intCast(state.mesh_vertices);
+pub fn vertices(allocator: std.mem.Allocator, count: c_int) []Vertex {
+    const n: usize = @intCast(count);
     var vs: std.ArrayList(Vertex) = .empty;
     const nf: f32 = @floatFromInt(n);
     const nm: f32 = @floatFromInt(n - 1);
@@ -94,8 +94,8 @@ pub fn vertices(allocator: std.mem.Allocator) []Vertex {
     return vs.toOwnedSlice(allocator) catch unreachable;
 }
 
-pub inline fn indices(allocator: std.mem.Allocator) []u16 {
-    const n: usize = @intCast(state.mesh_vertices);
+pub inline fn indices(allocator: std.mem.Allocator, index_count: c_int) []u16 {
+    const n: usize = @intCast(index_count);
     var idx: std.ArrayList(u16) = .empty;
     var count: usize = 0;
     for (0..(n - 1)) |iz| {
@@ -132,7 +132,7 @@ pub fn ui() void {
                 _ = ig.igSliderFloat("Frequency", &state.frequency, 0.0, 1.0);
                 _ = ig.igSliderFloat("Amplitude", &state.amplitude, 0.0, 100.0);
                 _ = ig.igSliderInt("Octaves", &state.octaves, 1, 8);
-                _ = ig.igSliderFloat("Lacunarity", &state.lacunarity, 1.0, 4.0);
+                _ = ig.igSliderFloat("Lacunarity", &state.lacunarity, 1.0, 8.0);
                 _ = ig.igSliderFloat("Persistence", &state.persistence, 0.1, 1.0);
                 ig.igEndTabItem();
             }
@@ -193,6 +193,20 @@ pub fn getVsParams() shd.VsParams {
             r * @cos(phi),
             r * @sin(phi) * @sin(theta),
         ), sapp.widthf(), sapp.heightf()),
+    };
+}
+
+pub fn getFsParams() shd.FsParams {
+    return .{
+        .light_dir = Vec3.new(
+            @cos(state.elevation_angle) * @sin(state.azimuth_angle),
+            @sin(state.elevation_angle),
+            @cos(state.elevation_angle) * @cos(state.azimuth_angle),
+        ),
+        .light_color = state.light_color,
+        .use_texture = if (state.apply_texture) 1.0 else 0.0,
+        .use_lighting = if (state.apply_lighting) 1.0 else 0.0,
+        .ambient_intensity = state.ambient_intensity,
     };
 }
 

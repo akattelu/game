@@ -24,8 +24,8 @@ const state = struct {
     var pipeline: sg.Pipeline = .{};
     var bind: sg.Bindings = .{};
 
-    var terrain_state = terrain.state;
-    var last_vertices_count: c_int = terrain_state.mesh_vertices;
+    var vertices: ?[]terrain.Vertex = null;
+    var indices: ?[]u16 = null;
 
     var mouse_down: bool = false;
 };
@@ -46,14 +46,12 @@ export fn init() void {
     });
 
     // Construct the grid mesh just so we can size the initial dynamic buffer
-    const mesh_vertices = terrain.vertices(allocator);
-    const mesh_indices = terrain.indices(allocator);
-    const vertices_range = sg.asRange(mesh_vertices);
-    const indices_range = sg.asRange(mesh_indices);
+    state.vertices = terrain.vertices(allocator, 200);
+    state.indices = terrain.indices(allocator, 200);
+    const vertices_range = sg.asRange(state.vertices.?);
+    const indices_range = sg.asRange(state.indices.?);
     state.bind.vertex_buffers[0] = sg.makeBuffer(.{ .usage = .{ .dynamic_update = true, .vertex_buffer = true }, .size = vertices_range.size });
     state.bind.index_buffer = sg.makeBuffer(.{ .usage = .{ .dynamic_update = true, .index_buffer = true }, .size = indices_range.size });
-    allocator.free(mesh_vertices);
-    allocator.free(mesh_indices);
 
     // create a small checker-board image and texture view
     state.bind.views[shd.VIEW_tex] = sg.makeView(.{
@@ -114,30 +112,18 @@ export fn frame() void {
 
     // Recreate terrain vertex buffer every frame
     // because the vertex count is a dynamic parameter
-    const terrain_mesh_vertices = terrain.vertices(allocator);
-    const terrain_mesh_indices = terrain.indices(allocator);
-    defer allocator.free(terrain_mesh_vertices);
-    defer allocator.free(terrain_mesh_indices);
+    allocator.free(state.vertices.?);
+    allocator.free(state.indices.?);
 
-    const vertices_range = sg.asRange(terrain_mesh_vertices);
-    const indices_range = sg.asRange(terrain_mesh_indices);
-    sg.destroyBuffer(state.bind.vertex_buffers[0]);
-    sg.destroyBuffer(state.bind.index_buffer);
-    state.bind.vertex_buffers[0] = sg.makeBuffer(.{ .usage = .{ .vertex_buffer = true }, .data = vertices_range });
-    state.bind.index_buffer = sg.makeBuffer(.{ .usage = .{ .index_buffer = true }, .data = indices_range });
+    state.vertices = terrain.vertices(allocator, terrain_state.mesh_vertices);
+    state.indices = terrain.indices(allocator, terrain_state.mesh_vertices);
 
-    // Setup shader params
-    const fs_params: shd.FsParams = .{
-        .light_dir = Vec3.new(
-            @cos(terrain_state.elevation_angle) * @sin(terrain_state.azimuth_angle),
-            @sin(terrain_state.elevation_angle),
-            @cos(terrain_state.elevation_angle) * @cos(terrain_state.azimuth_angle),
-        ),
-        .light_color = terrain_state.light_color,
-        .use_texture = if (terrain_state.apply_texture) 1.0 else 0.0,
-        .use_lighting = if (terrain_state.apply_lighting) 1.0 else 0.0,
-        .ambient_intensity = terrain_state.ambient_intensity,
-    };
+    const vertices_range = sg.asRange(state.vertices.?);
+    const indices_range = sg.asRange(state.indices.?);
+    sg.updateBuffer(state.bind.vertex_buffers[0], vertices_range);
+    sg.updateBuffer(state.bind.index_buffer, indices_range);
+
+    sdtx.print("Reallocating {d} vertices\n", .{terrain_state.mesh_vertices});
 
     // Setup imgui
     sg.beginPass(.{ .swapchain = sglue.swapchain() });
@@ -153,7 +139,7 @@ export fn frame() void {
     sg.applyPipeline(state.pipeline);
     sg.applyBindings(state.bind);
     sg.applyUniforms(shd.UB_vs_params, sg.asRange(&terrain.getVsParams()));
-    sg.applyUniforms(shd.UB_fs_params, sg.asRange(&fs_params));
+    sg.applyUniforms(shd.UB_fs_params, sg.asRange(&terrain.getFsParams()));
 
     // Draw
     sg.draw(0, terrain.getObjectCount(), 1);
