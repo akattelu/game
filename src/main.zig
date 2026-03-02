@@ -32,8 +32,8 @@ const state = struct {
 
 export fn init() void {
     sg.setup(.{ .environment = sglue.environment(), .logger = .{ .func = slog.func } });
-    sgimgui.setup(.{});
     simgui.setup(.{ .logger = .{ .func = slog.func } });
+    sgimgui.setup(.{});
     const allocator = if (builtin.cpu.arch.isWasm()) std.heap.c_allocator else std.heap.smp_allocator;
 
     sdtx.setup(.{
@@ -133,6 +133,10 @@ export fn frame() void {
         .delta_time = sapp.frameDuration(),
         .dpi_scale = sapp.dpiScale(),
     });
+    if (ig.igBeginMainMenuBar()) {
+        sgimgui.drawMenu("sokol-gfx");
+        ig.igEndMainMenuBar();
+    }
     terrain.ui();
 
     // Pipeline
@@ -152,6 +156,7 @@ export fn frame() void {
 }
 
 export fn cleanup() void {
+    sgimgui.shutdown();
     sg.shutdown();
 }
 
@@ -199,5 +204,6 @@ pub fn main() !void {
         .sample_count = 4,
         .logger = .{ .func = slog.func },
         .html5 = .{ .canvas_selector = "#canvas" },
+        .high_dpi = true,
     });
 }
