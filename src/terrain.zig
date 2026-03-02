@@ -28,6 +28,7 @@ pub const FlatVertex = extern struct {
     x: f32,
     y: f32,
     z: f32,
+    xz_n: [2]f32,
 };
 
 const state = struct {
@@ -50,7 +51,7 @@ const state = struct {
     // Noise
     pub var frequency: f32 = 0.05;
     pub var amplitude: f32 = 50.0;
-    pub var lacunarity: f32 = 8.0;
+    pub var lacunarity: f32 = 1.001;
     pub var persistence: f32 = 0.5;
     pub var octaves: c_int = 4;
 
@@ -113,8 +114,9 @@ pub fn emptySquareMesh(allocator: std.mem.Allocator, count: c_int) []FlatVertex 
             const z: f32 = @as(f32, @floatFromInt(j)) - (nf / 2.0);
             vs.append(allocator, .{
                 .x = x,
-                .y = 1.0,
+                .y = 0.0,
                 .z = z,
+                .xz_n = [2]f32{ x / (nf / 2.0), z / (nf / 2.0) },
             }) catch unreachable;
         }
     }
@@ -157,10 +159,10 @@ pub fn ui() void {
                 ig.igEndTabItem();
             }
             if (ig.igBeginTabItem("Noise", null, 0)) {
-                _ = ig.igSliderFloat("Frequency", &state.frequency, 0.0, 1.0);
-                _ = ig.igSliderFloat("Amplitude", &state.amplitude, 0.0, 100.0);
+                _ = ig.igSliderFloatEx("Frequency", &state.frequency, 0.0, std.math.pi / 4.0, "%2f", ig.ImGuiSliderFlags_Logarithmic);
+                _ = ig.igSliderFloat("Amplitude", &state.amplitude, 0.0, 30.0);
                 _ = ig.igSliderInt("Octaves", &state.octaves, 1, 8);
-                _ = ig.igSliderFloat("Lacunarity", &state.lacunarity, 1.0, 8.0);
+                _ = ig.igSliderFloatEx("Lacunarity", &state.lacunarity, 1.0, 4.0, "%2f", ig.ImGuiSliderFlags_Logarithmic);
                 _ = ig.igSliderFloat("Persistence", &state.persistence, 0.1, 1.0);
                 ig.igEndTabItem();
             }
@@ -283,6 +285,7 @@ pub inline fn gpuPipeline() sg.Pipeline {
             .layout = init: {
                 var l = sg.VertexLayoutState{};
                 l.attrs[shd.ATTR_terrainGPU_position].format = .FLOAT3;
+                l.attrs[shd.ATTR_terrainGPU_xz_n].format = .FLOAT2;
                 break :init l;
             },
             .index_type = .UINT16,

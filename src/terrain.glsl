@@ -36,16 +36,70 @@ layout(binding = 0) uniform vs_gpu_params {
 };
 
 in vec4 position;
+in vec2 xz_n;
 
 out vec4 color;
 out vec2 uv;
 out vec3 v_normal;
 
+float random (in vec2 _st) {
+    return fract(sin(dot(_st.xy,
+                         vec2(12.9898,78.233)))*
+        43758.5453123);
+}
+
+// Based on Morgan McGuire @morgan3d
+// https://www.shadertoy.com/view/4dS3Wd
+float noise (in vec2 _st) {
+
+    float ix = floor(_st.x);
+    float iz = floor(_st.y);
+    float fx = fract(_st.x);
+    float fz = fract(_st.y);
+
+    
+    // Smoothstep
+    float u = fx * fx * (3.0 - 2.0 * fx);
+    float v = fz * fz * (3.0 - 2.0 * fz);
+
+    // Bilinear interpolation of hash values
+    float a = random(vec2(ix, iz));
+    float b = random(vec2(ix + 1, iz));
+    float c = random(vec2(ix, iz + 1));
+    float d = random(vec2(ix + 1, iz + 1));
+
+    return mix(mix(a, b, u), mix(c, d, u), v);
+}
+
+float fbm ( in vec2 _st) {
+    float v = 0.0;
+    float freq = frequency;
+    float a = amplitude;
+    for (int i = 0; i < octaves; ++i) {
+        v += noise(_st * freq) * a;
+        freq *= lacunarity;
+        a *= persistence;
+    }
+    return v;
+}
+
 void main() {
-    gl_Position = mvp * position;
-    uv = vec2(1.0, 1.0);
-    v_normal = vec3(1.0, 1.0, 1.0);
-    color = vec4(0.0, 1.0, 1.0, 1.0);
+    vec4 pos = position;
+
+    // UV from normalized x,z coordinates (position on grid from -1 to 1)
+    uv = xz_n;
+
+    // Height calculation randomly with noise
+    pos.y = fbm(pos.xz);
+
+    // Position based color gradient
+    color = vec4(xz_n.x, xz_n.y, 0.5, 1.0);
+
+    // Calculate normals
+    v_normal = vec3(0.5, 0.5, 0.5);
+
+    // Camera projection
+    gl_Position = mvp * pos;
 }
 @end
 
@@ -107,8 +161,6 @@ void main() {
     } else {
         frag_color = mix(color, color * tex_color, use_texture);
     }
-
-    frag_color = color;
 }
 @end
 

@@ -118,18 +118,18 @@ export fn init() void {
 export fn frame() void {
     const allocator = if (builtin.cpu.arch.isWasm()) std.heap.c_allocator else std.heap.smp_allocator;
     const terrain_state = terrain.getState();
+    allocator.free(state.indices.?);
+    state.indices = terrain.indices(allocator, terrain_state.mesh_vertices);
+    const indices_range = sg.asRange(state.indices.?);
+    sg.updateBuffer(state.bindings[0].index_buffer, indices_range);
 
     if (!terrain_state.render_gpu) {
         allocator.free(state.vertices.?);
-        allocator.free(state.indices.?);
 
         state.vertices = terrain.vertices(allocator, terrain_state.mesh_vertices);
-        state.indices = terrain.indices(allocator, terrain_state.mesh_vertices);
 
         const vertices_range = sg.asRange(state.vertices.?);
-        const indices_range = sg.asRange(state.indices.?);
         sg.updateBuffer(state.bindings[0].vertex_buffers[0], vertices_range);
-        sg.updateBuffer(state.bindings[0].index_buffer, indices_range);
 
         sdtx.print("Reallocating {d} vertices\n", .{terrain_state.mesh_vertices});
     }
