@@ -241,6 +241,7 @@ pub fn getGPUVsParams() shd.VsGpuParams {
         .lacunarity = state.lacunarity,
         .persistence = state.persistence,
         .octaves = state.octaves,
+        .normal_cell_spacing = state.normal_cell_spacing,
     };
 }
 

@@ -33,6 +33,8 @@ layout(binding = 0) uniform vs_gpu_params {
     float lacunarity;
     float persistence;
     int octaves;
+
+    float normal_cell_spacing;
 };
 
 in vec4 position;
@@ -48,8 +50,6 @@ float random (in vec2 _st) {
         43758.5453123);
 }
 
-// Based on Morgan McGuire @morgan3d
-// https://www.shadertoy.com/view/4dS3Wd
 float noise (in vec2 _st) {
 
     float ix = floor(_st.x);
@@ -83,6 +83,10 @@ float fbm ( in vec2 _st) {
     return v;
 }
 
+bool eq(float x, float y) {
+    return abs(x-y) < 0.01;
+}
+
 void main() {
     vec4 pos = position;
 
@@ -90,13 +94,24 @@ void main() {
     uv = xz_n;
 
     // Height calculation randomly with noise
-    pos.y = fbm(pos.xz);
+    if (eq(xz_n.x, -1.0) || eq(xz_n.y, -1.0) || eq(xz_n.x, 1.0) || eq(xz_n.y, 1.0)) {
+        pos.y = 0.0;
+    } else {
+        pos.y = fbm(pos.xz);
+    }
 
     // Position based color gradient
     color = vec4(xz_n.x, xz_n.y, 0.5, 1.0);
 
     // Calculate normals
     v_normal = vec3(0.5, 0.5, 0.5);
+    float epsilon = normal_cell_spacing;
+    float hl = fbm(pos.xz + vec2(-epsilon, 0));
+    float hr = fbm(pos.xz + vec2(+epsilon, 0));
+    float hd = fbm(pos.xz + vec2(0, -epsilon));
+    float hu = fbm(pos.xz + vec2(0, +epsilon));
+
+    v_normal = normalize(vec3(hl - hr, normal_cell_spacing, hd - hu));
 
     // Camera projection
     gl_Position = mvp * pos;
