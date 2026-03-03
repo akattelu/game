@@ -19,6 +19,8 @@ const Vec3 = math.Vec3;
 
 const shd = @import("terrain.glsl.zig");
 
+const gltf = @import("gltf.zig");
+
 const state = struct {
     var pass_action: sg.PassAction = .{};
     var pipelines: [2]sg.Pipeline = @splat(.{});
@@ -208,18 +210,28 @@ export fn event(e: [*c]const sapp.Event) callconv(.c) void {
 }
 
 pub fn main() !void {
-    sapp.run(.{
-        .init_cb = init,
-        .frame_cb = frame,
-        .cleanup_cb = cleanup,
-        .event_cb = event,
-        .width = 1280,
-        .height = 960,
-        .icon = .{ .sokol_default = true },
-        .window_title = "game",
-        .sample_count = 4,
-        .logger = .{ .func = slog.func },
-        .html5 = .{ .canvas_selector = "#canvas" },
-        .high_dpi = true,
-    });
+    const allocator = if (builtin.cpu.arch.isWasm()) std.heap.c_allocator else std.heap.smp_allocator;
+    var iter = try std.process.argsWithAllocator(allocator);
+    defer iter.deinit();
+    _ = iter.next();
+    const arg = iter.next();
+    if (arg != null) {
+        std.debug.print("arg: {?s}\n", .{arg});
+        try gltf.printFile("assets/Skely.glb");
+    } else {
+        sapp.run(.{
+            .init_cb = init,
+            .frame_cb = frame,
+            .cleanup_cb = cleanup,
+            .event_cb = event,
+            .width = 1280,
+            .height = 960,
+            .icon = .{ .sokol_default = true },
+            .window_title = "game",
+            .sample_count = 4,
+            .logger = .{ .func = slog.func },
+            .html5 = .{ .canvas_selector = "#canvas" },
+            .high_dpi = true,
+        });
+    }
 }

@@ -169,6 +169,8 @@ fn setupDeps(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.buil
     // extract shdc dependency from sokol dependency
     const dep_shdc = dep_sokol.builder.dependency("shdc", .{});
 
+    const dep_zgltf = b.dependency("zgltf", .{});
+
     const root_mod = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
         .target = target,
@@ -176,6 +178,7 @@ fn setupDeps(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.buil
         .imports = &.{
             .{ .name = "sokol", .module = dep_sokol.module("sokol") },
             .{ .name = "cimgui", .module = dep_cimgui.module("cimgui") },
+            .{ .name = "zgltf", .module = dep_zgltf.module("zgltf") },
         },
     });
     return .{
