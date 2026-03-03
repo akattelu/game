@@ -60,7 +60,12 @@ pub const GltfViewer = struct {
                             }
                         },
                         .color => |color| {
-                            print("Primitive color: {any}\n", .{color});
+                            const accessor = gltf.data.accessors[color];
+                            var it = accessor.iterator(u32, &gltf, gltf.glb_binary.?);
+                            var i: u32 = 0;
+                            while (it.next()) |n| : (i += 1) {
+                                vertices.items[i].color = n[0];
+                            }
                         },
                         .texcoord => |texcoord| {
                             print("Primitive texcoord: {any}\n", .{texcoord});
