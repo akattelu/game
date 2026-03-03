@@ -35,6 +35,9 @@ layout(binding = 0) uniform vs_gpu_params {
     int octaves;
 
     float normal_cell_spacing;
+
+    int u_time;
+    int animate;
 };
 
 in vec4 position;
@@ -75,9 +78,14 @@ float fbm ( in vec2 _st) {
     float v = 0.0;
     float freq = frequency;
     float a = amplitude;
+    float time_random = abs(sin(u_time * 0.02));
     for (int i = 0; i < octaves; ++i) {
         v += noise(_st * freq) * a;
-        freq *= lacunarity;
+        if (animate == 1) {
+            freq *= (lacunarity + time_random );
+        } else {
+            freq *= lacunarity;
+        }
         a *= persistence;
     }
     return v;
@@ -97,6 +105,7 @@ void main() {
     if (eq(xz_n.x, -1.0) || eq(xz_n.y, -1.0) || eq(xz_n.x, 1.0) || eq(xz_n.y, 1.0)) {
         pos.y = 0.0;
     } else {
+        vec2 time_scale = vec2(0.15 * u_time, 0.5 * u_time);
         pos.y = fbm(pos.xz);
     }
 

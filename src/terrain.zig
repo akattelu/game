@@ -39,6 +39,7 @@ const state = struct {
     pub var mesh_vertices: c_int = 200;
     pub var apply_texture: bool = false;
     pub var seed: f32 = 0.0;
+    pub var animate: bool = false;
 
     // Lighting
     pub var apply_lighting: bool = true;
@@ -153,6 +154,9 @@ pub fn ui() void {
         if (ig.igBeginTabBar("Settings", 0)) {
             if (ig.igBeginTabItem("General", null, 0)) {
                 _ = ig.igCheckbox("Use GPU Noise and Lighting", &state.render_gpu);
+                if (state.render_gpu) {
+                    _ = ig.igCheckbox("Animate", &state.animate);
+                }
                 _ = ig.igSliderInt("Side Length", &state.mesh_vertices, 2, 200);
                 _ = ig.igCheckbox("Apply Texture?", &state.apply_texture);
                 _ = ig.igSliderFloat("Seed", &state.seed, 0.0, 1000.0);
@@ -230,6 +234,7 @@ pub fn getGPUVsParams() shd.VsGpuParams {
     const r = state.camera_radius;
     const phi = state.camera_phi;
     const theta = state.camera_theta;
+    const u_time = sapp.frameCount();
     return .{
         .mvp = Mat4.mvp(Vec3.new(
             r * @sin(phi) * @cos(theta),
@@ -242,6 +247,8 @@ pub fn getGPUVsParams() shd.VsGpuParams {
         .persistence = state.persistence,
         .octaves = state.octaves,
         .normal_cell_spacing = state.normal_cell_spacing,
+        .u_time = @intCast(u_time),
+        .animate = @intFromBool(state.animate),
     };
 }
 
