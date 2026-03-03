@@ -30,6 +30,12 @@ const state = struct {
     var flat_vertices: ?[]terrain.FlatVertex = null;
     var indices: ?[]u16 = null;
 
+    var gltf_viewer: ?gltf.GltfViewer = null;
+    // var gltf_buffer_v: ?sg.Buffer = null;
+    // var gltf_buffer_i: ?sg.Buffer = null;
+    var gltf_bindings: sg.Bindings = .{};
+    var gltf_pipeline: sg.Pipeline = .{};
+
     var mouse_down: bool = false;
 };
 
@@ -57,6 +63,21 @@ export fn init() void {
     state.bindings[0].vertex_buffers[0] = sg.makeBuffer(.{ .label = "CPU Heightmap", .usage = .{ .dynamic_update = true, .vertex_buffer = true }, .size = vertices_range.size });
     state.bindings[1].vertex_buffers[0] = sg.makeBuffer(.{ .label = "GPU Terrain Mesh", .usage = .{ .dynamic_update = false, .vertex_buffer = true }, .data = flat_vertices_range });
     const indexBuffer = sg.makeBuffer(.{ .label = "Mesh Index Buffer", .usage = .{ .dynamic_update = true, .index_buffer = true }, .size = indices_range.size });
+
+    // GLTF
+    if (state.gltf_viewer != null) {
+        state.gltf_bindings.vertex_buffers[0] = sg.makeBuffer(.{
+            .label = "GLTF Mesh Vertices Buffer",
+            .usage = .{ .vertex_buffer = true },
+            .data = sg.asRange(state.gltf_viewer.?.gltf_mesh_vertices.?),
+        });
+        state.gltf_bindings.index_buffer = sg.makeBuffer(.{
+            .label = "GLTF Mesh Indices Buffer",
+            .usage = .{ .index_buffer = true },
+            .data = sg.asRange(state.gltf_viewer.?.gltf_mesh_indices.?),
+        });
+        state.gltf_pipeline = terrain.cpuPipeline();
+    }
 
     // Keeping a shared buffer for these but technically they should be separate
     state.bindings[0].index_buffer = indexBuffer;
@@ -151,16 +172,26 @@ export fn frame() void {
     terrain.ui();
 
     // Pipeline
-    if (terrain_state.render_gpu) {
-        sg.applyPipeline(state.pipelines[1]);
-        sg.applyBindings(state.bindings[1]);
-        sg.applyUniforms(shd.UB_vs_gpu_params, sg.asRange(&terrain.getGPUVsParams()));
-        sg.applyUniforms(shd.UB_fs_gpu_params, sg.asRange(&terrain.getGPUFsParams()));
-    } else {
-        sg.applyPipeline(state.pipelines[0]);
-        sg.applyBindings(state.bindings[0]);
+    if (state.gltf_viewer) |_| {
+        // state.bindings[0].vertex_buffers[0] = state.gltf_buffer_v.?;
+        // state.bindings[0].index_buffer = state.gltf_buffer_i.?;
+        // sg.applyPipeline(state.pipelines[0]);
+        sg.applyPipeline(state.gltf_pipeline);
+        sg.applyBindings(state.gltf_bindings);
         sg.applyUniforms(shd.UB_vs_params, sg.asRange(&terrain.getVsParams()));
         sg.applyUniforms(shd.UB_fs_params, sg.asRange(&terrain.getFsParams()));
+    } else {
+        if (terrain_state.render_gpu) {
+            sg.applyPipeline(state.pipelines[1]);
+            sg.applyBindings(state.bindings[1]);
+            sg.applyUniforms(shd.UB_vs_gpu_params, sg.asRange(&terrain.getGPUVsParams()));
+            sg.applyUniforms(shd.UB_fs_gpu_params, sg.asRange(&terrain.getGPUFsParams()));
+        } else {
+            sg.applyPipeline(state.pipelines[0]);
+            sg.applyBindings(state.bindings[0]);
+            sg.applyUniforms(shd.UB_vs_params, sg.asRange(&terrain.getVsParams()));
+            sg.applyUniforms(shd.UB_fs_params, sg.asRange(&terrain.getFsParams()));
+        }
     }
 
     // Draw
@@ -215,23 +246,23 @@ pub fn main() !void {
     defer iter.deinit();
     _ = iter.next();
     const arg = iter.next();
-    if (arg != null) {
+    if (arg) |path| {
         std.debug.print("arg: {?s}\n", .{arg});
-        try gltf.printFile("assets/Skely.glb");
-    } else {
-        sapp.run(.{
-            .init_cb = init,
-            .frame_cb = frame,
-            .cleanup_cb = cleanup,
-            .event_cb = event,
-            .width = 1280,
-            .height = 960,
-            .icon = .{ .sokol_default = true },
-            .window_title = "game",
-            .sample_count = 4,
-            .logger = .{ .func = slog.func },
-            .html5 = .{ .canvas_selector = "#canvas" },
-            .high_dpi = true,
-        });
+        const viewer = try gltf.GltfViewer.init(allocator, path);
+        state.gltf_viewer = gltf.GltfViewer{ .gltf_mesh_indices = viewer.gltf_mesh_indices, .gltf_mesh_vertices = viewer.gltf_mesh_vertices };
     }
+    sapp.run(.{
+        .init_cb = init,
+        .frame_cb = frame,
+        .cleanup_cb = cleanup,
+        .event_cb = event,
+        .width = 1280,
+        .height = 960,
+        .icon = .{ .sokol_default = true },
+        .window_title = "game",
+        .sample_count = 4,
+        .logger = .{ .func = slog.func },
+        .html5 = .{ .canvas_selector = "#canvas" },
+        .high_dpi = true,
+    });
 }
