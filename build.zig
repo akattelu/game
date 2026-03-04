@@ -18,25 +18,53 @@ const Dependencies = struct {
     dep_zgltf: *std.Build.Dependency,
 };
 
-const native_targets: []const std.Target.Query = &.{
-    .{},
-    .{ .cpu_arch = .x86_64, .os_tag = .windows },
+const SokolTargetMode = enum { webgpu, webgl, native };
+const SokolTarget = union(SokolTargetMode) {
+    webgpu: void,
+    webgl: void,
+    native: std.Target.Query,
+};
+const BuildVariant = struct {
+    target: SokolTarget,
+    optimize: std.builtin.OptimizeMode,
+    /// This is like `terrain` and will be expanded to `src/{root_app_name}.zig`
+    /// It will also be used for downstream names like executables or steps
+    root_app_name: []const u8,
 };
 
 pub fn build(b: *std.Build) !void {
-    const optimize = b.standardOptimizeOption(.{});
-    const native_variant: BuildVariant = .{
-        .optimize = optimize,
-        .target = .{ .native = .{} },
-        .root_app_name = "terrain_cpu",
+    const optimize: std.builtin.OptimizeMode = switch (b.release_mode) {
+        .off => .Debug,
+        .fast => .ReleaseFast,
+        .small => .ReleaseSmall,
+        .safe => .ReleaseSafe,
+        else => unreachable,
     };
-    const web_variant: BuildVariant = .{
-        .optimize = optimize,
-        .target = .webgpu,
-        .root_app_name = "terrain_cpu",
+    const variants: []const BuildVariant = &.{
+        .{
+            .optimize = optimize,
+            .target = .webgpu,
+            .root_app_name = "terrain_cpu",
+        },
+        .{
+            .optimize = optimize,
+            .target = .webgl,
+            .root_app_name = "terrain_cpu",
+        },
+        .{
+            .optimize = optimize,
+            .target = .{ .native = .{} },
+            .root_app_name = "terrain_cpu",
+        },
+        .{
+            .optimize = optimize,
+            .target = .{ .native = .{ .cpu_arch = .x86_64, .os_tag = .windows } },
+            .root_app_name = "terrain_cpu",
+        },
     };
-    try buildFor(b, native_variant);
-    try buildFor(b, web_variant);
+    for (variants) |variant| {
+        try buildFor(b, variant);
+    }
 }
 
 fn addDependencies(b: *std.Build, options: AddDependenciesOptions) !Dependencies {
@@ -70,16 +98,6 @@ fn addDependencies(b: *std.Build, options: AddDependenciesOptions) !Dependencies
         .dep_shdc = dep_shdc,
         .dep_zgltf = dep_zgltf,
     };
-}
-fn buildNative(b: *std.Build, target: std.Build.ResolvedTarget, root_mod: *std.Build.Module) !*std.Build.Step.Compile {
-    const triple = try target.result.linuxTriple(b.allocator);
-    const name = try std.fmt.allocPrint(b.allocator, "game-{s}", .{triple});
-    const exe = b.addExecutable(.{
-        .name = name,
-        .root_module = root_mod,
-    });
-
-    return exe;
 }
 
 fn buildWeb(b: *std.Build, root_mod: *std.Build.Module, deps: Dependencies, variant: BuildVariant, add_run_step: bool) !*std.Build.Step {
@@ -120,7 +138,8 @@ fn buildWeb(b: *std.Build, root_mod: *std.Build.Module, deps: Dependencies, vari
     if (add_run_step) {
         const run = sokol.emRunStep(b, .{ .name = lib_name, .emsdk = emsdk });
         run.step.dependOn(&link_step.step);
-        b.step(lib_name, "Run game").dependOn(&run.step);
+        const desc = try sprint(b.allocator, "Run game for {s}", .{@tagName(t)});
+        b.step(lib_name, desc).dependOn(&run.step);
     }
     return &link_step.step;
 }
@@ -143,46 +162,16 @@ fn compileShaders(b: *std.Build, dep_shdc: *std.Build.Dependency) !*std.Build.St
     return shdc_step;
 }
 
-fn rootFiles(b: *std.Build) ![][]const u8 {
-    var root_files: std.ArrayList([]const u8) = .empty;
-
-    var dir = try b.build_root.handle.openDir("src", .{ .iterate = true });
-    defer dir.close();
-    var walker = dir.iterate();
-    while (try walker.next()) |entry| {
-        if (entry.kind == .file) {
-            try root_files.append(b.allocator, try b.allocator.dupe(u8, entry.name));
-        }
-    }
-
-    return try root_files.toOwnedSlice(b.allocator);
-}
-
 fn fatal(comptime format: []const u8, args: anytype) noreturn {
     print(format, args);
     std.process.exit(1);
 }
-
-const SokolTargetMode = enum { webgpu, webgl, native };
-const SokolTarget = union(SokolTargetMode) {
-    webgpu: void,
-    webgl: void,
-    native: std.Target.Query,
-};
-const BuildVariant = struct {
-    target: SokolTarget,
-    optimize: std.builtin.OptimizeMode,
-    /// This is like `terrain` and will be expanded to `src/{root_app_name}.zig`
-    /// It will also be used for downstream names like executables or steps
-    root_app_name: []const u8,
-};
 
 fn buildFor(b: *std.Build, variant: BuildVariant) !void {
     const root_file_name = try sprint(b.allocator, "src/{s}.zig", .{variant.root_app_name});
     switch (variant.target) {
         .native => |query| {
             const t = b.resolveTargetQuery(query);
-            print("Building app {s} for {s} (Optimization mode: {s})\n", .{ variant.root_app_name, @tagName(t.result.os.tag), @tagName(variant.optimize) });
             const deps = try addDependencies(b, .{ .optimize = variant.optimize, .target = t, .mode = .none });
             const root_mod = b.createModule(.{
                 .root_source_file = b.path(root_file_name),
@@ -195,42 +184,45 @@ fn buildFor(b: *std.Build, variant: BuildVariant) !void {
                 },
             });
             const shaders = try compileShaders(b, deps.dep_shdc);
-            const exe = try buildNative(b, t, root_mod);
+            const name = try sprint(b.allocator, "{s}_{s}", .{ variant.root_app_name, @tagName(t.result.os.tag) });
+            const exe = b.addExecutable(.{
+                .name = name,
+                .root_module = root_mod,
+            });
 
-            const run_step = b.step("run", "Run the app");
-            const test_step = b.step("test", "Run tests");
+            const exe_install = b.addInstallArtifact(exe, .{});
 
-            const exe_tests = b.addTest(.{ .name = "game-tests", .root_module = exe.root_module });
+            // Setup run cmd
+            if (t.result.os.tag == b.graph.host.result.os.tag) {
+                // Setup run step only for native
+                const run_desc = try sprint(b.allocator, "Run the {s} app natively", .{variant.root_app_name});
+                const run_step = b.step(variant.root_app_name, run_desc);
+                const run_cmd = b.addRunArtifact(exe);
+                if (b.args) |args| {
+                    run_cmd.addArgs(args);
+                }
+                run_step.dependOn(&run_cmd.step);
+                run_cmd.step.dependOn(&exe_install.step);
 
-            const run_exe_tests = b.addRunArtifact(exe_tests);
-            const run_cmd = b.addRunArtifact(exe);
-            if (b.args) |args| {
-                run_cmd.addArgs(args);
-                run_exe_tests.addArgs(args);
+                // Setup test step once only for native
+                const test_step = b.step("test", "Run tests");
+                const test_name = try sprint(b.allocator, "{s}_tests", .{variant.root_app_name});
+                const exe_tests = b.addTest(.{ .name = test_name, .root_module = exe.root_module });
+                const run_exe_tests = b.addRunArtifact(exe_tests);
+                const tests_install = b.addInstallArtifact(exe_tests, .{});
+                b.getInstallStep().dependOn(&tests_install.step);
+                run_exe_tests.step.dependOn(&tests_install.step);
+                test_step.dependOn(&run_exe_tests.step);
             }
 
-            const exe_install = b.addInstallArtifact(exe, .{ .dest_sub_path = "game" });
-            const tests_install = b.addInstallArtifact(exe_tests, .{});
-
-            // exe_install.step.dependOn(b.getInstallStep());
             b.getInstallStep().dependOn(&exe_install.step);
-            b.getInstallStep().dependOn(&tests_install.step);
             exe.step.dependOn(shaders);
-            run_step.dependOn(&run_cmd.step);
-            run_exe_tests.step.dependOn(&tests_install.step);
-            run_cmd.step.dependOn(&exe_install.step);
-            test_step.dependOn(&run_exe_tests.step);
         },
         else => { // WebGL or WebGPU
-            print("Building app {s} for {s} (Optimization mode: {s})\n", .{
-                variant.root_app_name,
-                @tagName(variant.target),
-                @tagName(variant.optimize),
-            });
             const deps = try addDependencies(b, .{
                 .target = b.resolveTargetQuery(.{ .os_tag = .emscripten, .cpu_arch = .wasm32 }),
                 .optimize = variant.optimize,
-                .mode = .webgpu,
+                .mode = if (variant.target == .webgpu) .webgpu else .webgl,
             });
             const shaders = try compileShaders(b, deps.dep_shdc);
             const root_mod = b.createModule(.{
