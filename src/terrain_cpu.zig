@@ -15,7 +15,7 @@ const simgui = sokol.imgui;
 const sgimgui = sokol.sgimgui;
 const builtin = @import("builtin");
 
-fn allocator() std.mem.Allocator {
+inline fn allocator() std.mem.Allocator {
     if (builtin.cpu.arch.isWasm()) {
         return std.heap.c_allocator;
     } else {
@@ -144,7 +144,7 @@ pub fn vertices(alloc: std.mem.Allocator, count: c_int, state: *TerrainState) []
     return vs.toOwnedSlice(alloc) catch unreachable;
 }
 
-pub fn indices(alloc: std.mem.Allocator, index_count: c_int) []u16 {
+pub fn indices(alloc: std.mem.Allocator, index_count: c_int) ![]u16 {
     const n: usize = @intCast(index_count);
     var idx: std.ArrayList(u16) = .empty;
     var count: usize = 0;
@@ -155,18 +155,18 @@ pub fn indices(alloc: std.mem.Allocator, index_count: c_int) []u16 {
             const C: u16 = @intCast((iz + 1) * n + ix);
             const D: u16 = @intCast((iz + 1) * n + ix + 1);
 
-            idx.append(alloc, A) catch unreachable;
-            idx.append(alloc, C) catch unreachable;
-            idx.append(alloc, B) catch unreachable;
+            try idx.append(alloc, A);
+            try idx.append(alloc, C);
+            try idx.append(alloc, B);
 
-            idx.append(alloc, B) catch unreachable;
-            idx.append(alloc, C) catch unreachable;
-            idx.append(alloc, D) catch unreachable;
+            try idx.append(alloc, B);
+            try idx.append(alloc, C);
+            try idx.append(alloc, D);
 
             count += 6;
         }
     }
-    return idx.toOwnedSlice(alloc) catch unreachable;
+    return try idx.toOwnedSlice(alloc);
 }
 
 fn ui(state: *TerrainState) void {
@@ -250,8 +250,13 @@ export fn init(userdata: ?*anyopaque) void {
     const alloc = allocator();
 
     // Construct the grid mesh just so we can size the initial dynamic buffer
+    const empty: []const u16 = &[_]u16{ 1, 2, 3 };
+    const idcs = indices(alloc, 200) catch |err| blk: {
+        std.debug.print("Failed to read indices {any}\n", .{err});
+        break :blk empty;
+    };
     const vertices_range = sg.asRange(vertices(alloc, 200, state));
-    const indices_range = sg.asRange(indices(alloc, 200));
+    const indices_range = sg.asRange(idcs);
     const indexBuffer = sg.makeBuffer(.{ .label = "Mesh Index Buffer", .usage = .{ .dynamic_update = true, .index_buffer = true }, .size = indices_range.size });
     state.bindings.vertex_buffers[0] = sg.makeBuffer(.{ .label = "CPU Heightmap", .usage = .{ .dynamic_update = true, .vertex_buffer = true }, .size = vertices_range.size });
     state.bindings.index_buffer = indexBuffer;
@@ -302,7 +307,11 @@ export fn frame(userdata: ?*anyopaque) void {
     const alloc = arena.allocator();
 
     const state: *TerrainState = @ptrCast(@alignCast(userdata));
-    const frame_indices = indices(alloc, state.mesh_vertices);
+    const empty: []const u16 = &[_]u16{ 1, 2, 3 };
+    const frame_indices = indices(alloc, state.mesh_vertices) catch |err| blk: {
+        std.debug.print("Failed to read indices {any}\n", .{err});
+        break :blk empty;
+    };
     const indices_range = sg.asRange(frame_indices);
     sg.updateBuffer(state.bindings.index_buffer, indices_range);
 

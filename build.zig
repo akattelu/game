@@ -51,7 +51,7 @@ pub fn build(b: *std.Build) !void {
                 for ([_]WebGraphicsMode{ .webgl, .webgpu }) |mode| {
                     const options = setupDeps(b, .{
                         .target = b.resolveTargetQuery(.{ .os_tag = .emscripten, .cpu_arch = .wasm32 }),
-                        .optimize = .ReleaseSafe,
+                        .optimize = .Debug,
                         .mode = mode,
                         .root_mod_filename = "src/terrain_cpu.zig",
                     });
@@ -68,7 +68,7 @@ pub fn build(b: *std.Build) !void {
                     print("Running in web build mode\n", .{});
                     const options = setupDeps(b, .{
                         .target = b.resolveTargetQuery(.{ .os_tag = .emscripten, .cpu_arch = .wasm32 }),
-                        .optimize = .ReleaseFast,
+                        .optimize = .Debug,
                         .mode = .webgpu,
                         .root_mod_filename = "src/terrain_cpu.zig",
                     });

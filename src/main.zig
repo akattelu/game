@@ -31,8 +31,6 @@ const state = struct {
     var indices: ?[]u16 = null;
 
     var gltf_viewer: ?gltf.GltfViewer = null;
-    // var gltf_buffer_v: ?sg.Buffer = null;
-    // var gltf_buffer_i: ?sg.Buffer = null;
     var gltf_bindings: sg.Bindings = .{};
     var gltf_pipeline: sg.Pipeline = .{};
 
@@ -173,9 +171,6 @@ export fn frame() void {
 
     // Pipeline
     if (state.gltf_viewer) |_| {
-        // state.bindings[0].vertex_buffers[0] = state.gltf_buffer_v.?;
-        // state.bindings[0].index_buffer = state.gltf_buffer_i.?;
-        // sg.applyPipeline(state.pipelines[0]);
         sg.applyPipeline(state.gltf_pipeline);
         sg.applyBindings(state.gltf_bindings);
         sg.applyUniforms(shd.UB_vs_params, sg.asRange(&terrain.getVsParams()));
