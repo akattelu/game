@@ -135,13 +135,18 @@ pub fn vertices(alloc: std.mem.Allocator, count: c_int, state: *TerrainState) []
                 .u = u,
                 .v = v,
                 .normal = Vec3.zero(),
-            }) catch unreachable;
+            }) catch {
+                std.debug.print("Failed to append to vertices set \n", .{});
+            };
         }
     }
 
     populateNormals(&vs.items, n, state);
 
-    return vs.toOwnedSlice(alloc) catch unreachable;
+    return vs.toOwnedSlice(alloc) catch {
+        std.debug.print("Failed to convert vertices list to owned slice\n", .{});
+        return &[_]Vertex{};
+    };
 }
 
 pub fn indices(alloc: std.mem.Allocator, index_count: c_int) ![]u16 {
