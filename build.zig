@@ -39,7 +39,7 @@ pub fn build(b: *std.Build) !void {
                     .target = b.resolveTargetQuery(target),
                     .optimize = .ReleaseSmall,
                     .mode = .none,
-                    .root_mod_filename = "src/main.zig",
+                    .root_mod_filename = "src/terrain_cpu.zig",
                 });
                 const shaders = try compileShaders(b, options);
 
@@ -53,7 +53,7 @@ pub fn build(b: *std.Build) !void {
                         .target = b.resolveTargetQuery(.{ .os_tag = .emscripten, .cpu_arch = .wasm32 }),
                         .optimize = .ReleaseSafe,
                         .mode = mode,
-                        .root_mod_filename = "src/main.zig",
+                        .root_mod_filename = "src/terrain_cpu.zig",
                     });
                     const shaders = try compileShaders(b, options);
                     const web_artifacts = try buildWeb(b, options, mode, false);
@@ -70,7 +70,7 @@ pub fn build(b: *std.Build) !void {
                         .target = b.resolveTargetQuery(.{ .os_tag = .emscripten, .cpu_arch = .wasm32 }),
                         .optimize = .ReleaseSafe,
                         .mode = .webgpu,
-                        .root_mod_filename = "src/main.zig",
+                        .root_mod_filename = "src/terrain_cpu.zig",
                     });
                     const shaders = try compileShaders(b, options);
                     const web_artifacts = try buildWeb(b, options, .webgpu, true);
@@ -83,7 +83,7 @@ pub fn build(b: *std.Build) !void {
                     const options = setupDeps(b, .{
                         .optimize = b.standardOptimizeOption(.{}),
                         .target = target,
-                        .root_mod_filename = "src/main.zig",
+                        .root_mod_filename = "src/terrain_cpu.zig",
                         .mode = .none,
                     });
                     const shaders = try compileShaders(b, options);
