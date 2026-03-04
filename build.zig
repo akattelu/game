@@ -68,7 +68,7 @@ pub fn build(b: *std.Build) !void {
                     print("Running in web build mode\n", .{});
                     const options = setupDeps(b, .{
                         .target = b.resolveTargetQuery(.{ .os_tag = .emscripten, .cpu_arch = .wasm32 }),
-                        .optimize = .ReleaseSafe,
+                        .optimize = .ReleaseFast,
                         .mode = .webgpu,
                         .root_mod_filename = "src/terrain_cpu.zig",
                     });

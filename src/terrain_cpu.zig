@@ -68,6 +68,38 @@ const TerrainState = struct {
 
     // Input
     mouse_down: bool = false,
+
+    fn vsUniforms(self: *TerrainState) shd.VsParams {
+        const r = self.camera_radius;
+        const phi = self.camera_phi;
+        const theta = self.camera_theta;
+        return .{
+            .mvp = Mat4.mvp(Vec3.new(
+                r * @sin(phi) * @cos(theta),
+                r * @cos(phi),
+                r * @sin(phi) * @sin(theta),
+            ), sapp.widthf(), sapp.heightf()),
+        };
+    }
+
+    fn fsUniforms(self: *TerrainState) shd.FsParams {
+        return .{
+            .light_dir = Vec3.new(
+                @cos(self.elevation_angle) * @sin(self.azimuth_angle),
+                @sin(self.elevation_angle),
+                @cos(self.elevation_angle) * @cos(self.azimuth_angle),
+            ),
+            .light_color = self.light_color,
+            .use_texture = if (self.apply_texture) 1.0 else 0.0,
+            .use_lighting = if (self.apply_lighting) 1.0 else 0.0,
+            .ambient_intensity = self.ambient_intensity,
+        };
+    }
+
+    fn objectCount(self: *TerrainState) u32 {
+        const n: u32 = @intCast(self.mesh_vertices);
+        return (n - 1) * (n - 1) * 6;
+    }
 };
 
 pub fn vertices(alloc: std.mem.Allocator, count: c_int, state: *TerrainState) []Vertex {
@@ -112,7 +144,7 @@ pub fn vertices(alloc: std.mem.Allocator, count: c_int, state: *TerrainState) []
     return vs.toOwnedSlice(alloc) catch unreachable;
 }
 
-pub inline fn indices(alloc: std.mem.Allocator, index_count: c_int) []u16 {
+pub fn indices(alloc: std.mem.Allocator, index_count: c_int) []u16 {
     const n: usize = @intCast(index_count);
     var idx: std.ArrayList(u16) = .empty;
     var count: usize = 0;
@@ -201,44 +233,6 @@ inline fn index(i: usize, j: usize, n: usize) usize {
     return (i * n) + j;
 }
 
-pub fn getState() @TypeOf(TerrainState) {
-    return TerrainState;
-}
-
-fn getVsParams(state: *TerrainState) shd.VsParams {
-    const r = state.camera_radius;
-    const phi = state.camera_phi;
-    const theta = state.camera_theta;
-    return .{
-        .mvp = Mat4.mvp(Vec3.new(
-            r * @sin(phi) * @cos(theta),
-            r * @cos(phi),
-            r * @sin(phi) * @sin(theta),
-        ), sapp.widthf(), sapp.heightf()),
-    };
-}
-
-fn getFsParams(state: *TerrainState) shd.FsParams {
-    return .{
-        .light_dir = Vec3.new(
-            @cos(state.elevation_angle) * @sin(state.azimuth_angle),
-            @sin(state.elevation_angle),
-            @cos(state.elevation_angle) * @cos(state.azimuth_angle),
-        ),
-        .light_color = state.light_color,
-        .use_texture = if (state.apply_texture) 1.0 else 0.0,
-        .use_lighting = if (state.apply_lighting) 1.0 else 0.0,
-        .ambient_intensity = state.ambient_intensity,
-    };
-}
-
-pub fn getObjectCount(count: c_int) u32 {
-    const n: u32 = @intCast(count);
-    return (n - 1) * (n - 1) * 6;
-}
-
-// fn bindings(userdata: ?*anyopaque) sg.Bindings {}
-
 export fn init(userdata: ?*anyopaque) void {
     sg.setup(.{ .environment = sglue.environment(), .logger = .{ .func = slog.func } });
     simgui.setup(.{ .logger = .{ .func = slog.func } });
@@ -303,16 +297,14 @@ export fn init(userdata: ?*anyopaque) void {
     );
 }
 export fn frame(userdata: ?*anyopaque) void {
-    // allocator.free(state.indices.?);
-    const state: *TerrainState = @ptrCast(@alignCast(userdata));
     var arena = std.heap.ArenaAllocator.init(allocator());
     defer arena.deinit();
     const alloc = arena.allocator();
+
+    const state: *TerrainState = @ptrCast(@alignCast(userdata));
     const frame_indices = indices(alloc, state.mesh_vertices);
     const indices_range = sg.asRange(frame_indices);
     sg.updateBuffer(state.bindings.index_buffer, indices_range);
-
-    // allocator.free(state.vertices.?);
 
     const frame_vertices = vertices(alloc, state.mesh_vertices, state);
     const vertices_range = sg.asRange(frame_vertices);
@@ -331,11 +323,11 @@ export fn frame(userdata: ?*anyopaque) void {
     // Pipeline
     sg.applyPipeline(state.pipeline);
     sg.applyBindings(state.bindings);
-    sg.applyUniforms(shd.UB_vs_params, sg.asRange(&getVsParams(state)));
-    sg.applyUniforms(shd.UB_fs_params, sg.asRange(&getFsParams(state)));
+    sg.applyUniforms(shd.UB_vs_params, sg.asRange(&state.vsUniforms()));
+    sg.applyUniforms(shd.UB_fs_params, sg.asRange(&state.fsUniforms()));
 
     // Draw
-    sg.draw(0, getObjectCount(state.mesh_vertices), 1);
+    sg.draw(0, state.objectCount(), 1);
     sdtx.draw();
     sgimgui.draw();
     simgui.render();
