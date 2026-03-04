@@ -23,6 +23,8 @@ inline fn allocator() std.mem.Allocator {
     }
 }
 
+pub var st = TerrainState{};
+
 pub const Vertex = extern struct {
     x: f32,
     y: f32,
@@ -388,13 +390,12 @@ export fn event(e: [*c]const sapp.Event, userdata: ?*anyopaque) callconv(.c) voi
 }
 
 pub fn main() !void {
-    var state = TerrainState{};
     sapp.run(.{
         .init_userdata_cb = init,
         .frame_userdata_cb = frame,
         .cleanup_userdata_cb = cleanup,
         .event_userdata_cb = event,
-        .user_data = @ptrCast(&state),
+        .user_data = @ptrCast(&st),
         .width = 1280,
         .height = 960,
         .icon = .{ .sokol_default = true },
