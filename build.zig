@@ -15,6 +15,12 @@ const Options = struct {
 
     root_mod: *std.Build.Module,
 };
+const DepsOptions = struct {
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    mode: WebGraphicsMode,
+    root_mod_filename: []const u8,
+};
 
 pub fn build(b: *std.Build) !void {
     const release = b.option(bool, "release", "Run a full release build across all targets") orelse false;
@@ -29,7 +35,12 @@ pub fn build(b: *std.Build) !void {
                 .{ .cpu_arch = .x86_64, .os_tag = .windows },
             };
             for (native_targets) |target| {
-                const options = setupDeps(b, b.resolveTargetQuery(target), .ReleaseSmall, .none);
+                const options = setupDeps(b, .{
+                    .target = b.resolveTargetQuery(target),
+                    .optimize = .ReleaseSmall,
+                    .mode = .none,
+                    .root_mod_filename = "src/main.zig",
+                });
                 const shaders = try compileShaders(b, options);
 
                 const exe = try buildNative(b, options);
@@ -37,16 +48,13 @@ pub fn build(b: *std.Build) !void {
                 exe.step.dependOn(shaders);
             }
             { // Web
-                // Web release is only webGL for now
-                // emLinkStep manages the output path and hardcodes the `web` part
-                // so I'm only doing one webGL here even though webgpu works
                 for ([_]WebGraphicsMode{ .webgl, .webgpu }) |mode| {
-                    const options = setupDeps(
-                        b,
-                        b.resolveTargetQuery(.{ .os_tag = .emscripten, .cpu_arch = .wasm32 }),
-                        .ReleaseSafe,
-                        mode,
-                    );
+                    const options = setupDeps(b, .{
+                        .target = b.resolveTargetQuery(.{ .os_tag = .emscripten, .cpu_arch = .wasm32 }),
+                        .optimize = .ReleaseSafe,
+                        .mode = mode,
+                        .root_mod_filename = "src/main.zig",
+                    });
                     const shaders = try compileShaders(b, options);
                     const web_artifacts = try buildWeb(b, options, mode, false);
                     web_artifacts.dependOn(shaders);
@@ -58,7 +66,12 @@ pub fn build(b: *std.Build) !void {
             switch (web) {
                 true => {
                     print("Running in web build mode\n", .{});
-                    const options = setupDeps(b, b.resolveTargetQuery(.{ .os_tag = .emscripten, .cpu_arch = .wasm32 }), b.standardOptimizeOption(.{}), .webgpu);
+                    const options = setupDeps(b, .{
+                        .target = b.resolveTargetQuery(.{ .os_tag = .emscripten, .cpu_arch = .wasm32 }),
+                        .optimize = .ReleaseSafe,
+                        .mode = .webgpu,
+                        .root_mod_filename = "src/main.zig",
+                    });
                     const shaders = try compileShaders(b, options);
                     const web_artifacts = try buildWeb(b, options, .webgpu, true);
                     web_artifacts.dependOn(shaders);
@@ -67,7 +80,12 @@ pub fn build(b: *std.Build) !void {
                 false => {
                     print("Running in standard build mode\n", .{});
                     const target = b.standardTargetOptions(.{});
-                    const options = setupDeps(b, target, b.standardOptimizeOption(.{}), .none);
+                    const options = setupDeps(b, .{
+                        .optimize = b.standardOptimizeOption(.{}),
+                        .target = target,
+                        .root_mod_filename = "src/main.zig",
+                        .mode = .none,
+                    });
                     const shaders = try compileShaders(b, options);
                     const exe = try buildNative(b, options);
 
@@ -153,7 +171,11 @@ fn buildWeb(b: *std.Build, options: Options, web_graphics: WebGraphicsMode, add_
     return &link_step.step;
 }
 
-fn setupDeps(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, web_graphics: WebGraphicsMode) Options {
+fn setupDeps(b: *std.Build, options: DepsOptions) Options {
+    const target = options.target;
+    const optimize = options.optimize;
+    const web_graphics = options.mode;
+    const root_file_name = options.root_mod_filename;
     const dep_sokol = b.dependency("sokol", .{
         .target = target,
         .optimize = optimize,
@@ -172,7 +194,7 @@ fn setupDeps(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.buil
     const dep_zgltf = b.dependency("zgltf", .{});
 
     const root_mod = b.createModule(.{
-        .root_source_file = b.path("src/main.zig"),
+        .root_source_file = b.path(root_file_name),
         .target = target,
         .optimize = optimize,
         .imports = &.{
