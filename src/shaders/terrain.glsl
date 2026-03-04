@@ -1,4 +1,4 @@
-@header const m = @import("math.zig")
+@header const m = @import("../lib/math.zig")
 @ctype mat4 m.Mat4
 @ctype vec3 m.Vec3
 

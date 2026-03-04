@@ -216,8 +216,8 @@ fn setupDeps(b: *std.Build, options: DepsOptions) Options {
 fn compileShaders(b: *std.Build, options: Options) !*std.Build.Step {
     const shdc_step = try sokol.shdc.createSourceFile(b, .{
         .shdc_dep = options.dep_shdc,
-        .input = "src/terrain.glsl",
-        .output = "src/terrain.glsl.zig",
+        .input = "src/shaders/terrain.glsl",
+        .output = "src/shaders/terrain.glsl.zig",
         .slang = .{
             .metal_macos = true,
             .spirv_vk = true,
