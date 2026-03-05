@@ -81,9 +81,7 @@ pub const GltfViewer = struct {
         try gltf.parse(buffer);
 
         for (gltf.data.meshes) |mesh| {
-            print("Mesh Name: {?s}\n\n", .{mesh.name});
-            for (mesh.primitives, 0..) |primitive, idx| {
-                print("Primitive #{d}, mode: {s}\n", .{ idx, @tagName(primitive.mode) });
+            for (mesh.primitives) |primitive| {
                 for (primitive.attributes) |attr| {
                     switch (attr) {
                         .position => |pos| {
@@ -139,6 +137,12 @@ pub const GltfViewer = struct {
         self.gltf_mesh_vertices = try vertices.toOwnedSlice(alloc);
         self.gltf_mesh_indices = try indices.toOwnedSlice(alloc);
     }
+
+    pub fn deinit(self: *GltfViewer, alloc: std.mem.Allocator) void {
+        alloc.free(self.gltf_mesh_indices);
+        alloc.free(self.gltf_mesh_vertices);
+    }
+
     fn vsUniforms(self: *GltfViewer) shd.VsParams {
         const r = self.camera_radius;
         const phi = self.camera_phi;
@@ -164,6 +168,43 @@ pub const GltfViewer = struct {
             .use_lighting = if (self.apply_lighting) 1.0 else 0.0,
             .ambient_intensity = self.ambient_intensity,
         };
+    }
+
+    fn ui(self: *GltfViewer) void {
+        if (ig.igBeginMainMenuBar()) {
+            sgimgui.drawMenu("sokol-gfx");
+            ig.igEndMainMenuBar();
+        }
+        if (ig.igBegin("Terrain Playground", null, ig.ImGuiWindowFlags_AlwaysAutoResize)) {
+            if (ig.igBeginTabBar("Settings", 0)) {
+                if (ig.igBeginTabItem("General", null, 0)) {
+                    _ = ig.igBulletText("Vertex Count: %d", self.gltf_mesh_vertices.?.len);
+                    _ = ig.igBulletText("Index Count: %d", self.gltf_mesh_indices.?.len);
+                    ig.igEndTabItem();
+                }
+                if (ig.igBeginTabItem("Meta", null, 0)) {
+                    _ = ig.igBulletText("Dear ImGui Version: %s", ig.IMGUI_VERSION);
+                    ig.igEndTabItem();
+                }
+                if (ig.igBeginTabItem("Lighting", null, 0)) {
+                    _ = ig.igCheckbox("Apply Lighting?", &self.apply_lighting);
+                    _ = ig.igSliderFloat("Cell Spacing", &self.normal_cell_spacing, 0.01, 10.0);
+                    _ = ig.igSliderFloat("Ambient Light Intensity", &self.ambient_intensity, 0.1, 1.0);
+                    _ = ig.igSliderFloat("Azimuth Angle", &self.azimuth_angle, 0.0, 2 * std.math.pi);
+                    _ = ig.igSliderFloat("Elevation angle", &self.elevation_angle, 0.0, std.math.pi / 2.0);
+                    _ = ig.igColorEdit3("Lighting Color", @ptrCast(&self.light_color), 0);
+                    ig.igEndTabItem();
+                }
+                if (ig.igBeginTabItem("Camera", null, 0)) {
+                    _ = ig.igSliderFloat("Camera Theta", &self.camera_theta, 0.0, 2 * std.math.pi);
+                    _ = ig.igSliderFloat("Camera Phi", &self.camera_phi, 0.0, 2 * std.math.pi);
+                    _ = ig.igSliderFloat("Camera Radius", &self.camera_radius, 10.0, 300.0);
+                    ig.igEndTabItem();
+                }
+                ig.igEndTabBar();
+            }
+            ig.igEnd();
+        }
     }
 };
 
@@ -248,6 +289,8 @@ export fn frame(userdata: ?*anyopaque) void {
         .dpi_scale = sapp.dpiScale(),
     });
 
+    state.ui();
+
     // Pipeline
     sg.applyPipeline(state.pipeline);
     sg.applyBindings(state.bindings);
@@ -306,9 +349,7 @@ pub fn main() !void {
     var iter = try std.process.argsWithAllocator(alloc);
     defer iter.deinit();
     _ = iter.next();
-    const arg = iter.next();
-    if (arg) |path| {
-        std.debug.print("arg: {?s}\n", .{arg});
+    if (iter.next()) |path| {
         try st.populate(alloc, path);
     }
     sapp.run(.{
