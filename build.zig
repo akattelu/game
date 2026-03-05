@@ -16,6 +16,7 @@ const Dependencies = struct {
     dep_cimgui: *std.Build.Dependency,
     dep_shdc: *std.Build.Dependency,
     dep_zgltf: *std.Build.Dependency,
+    dep_zigimg: *std.Build.Dependency,
 };
 const SokolTargetMode = enum { webgpu, webgl, native };
 const SokolTarget = union(SokolTargetMode) {
@@ -114,13 +115,23 @@ fn addDependencies(b: *std.Build, options: AddDependenciesOptions) !Dependencies
     const dep_shdc = dep_sokol.builder.dependency("shdc", .{});
 
     // zgltf
-    const dep_zgltf = b.dependency("zgltf", .{});
+    const dep_zgltf = b.dependency("zgltf", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
+    // zigimg
+    const dep_zigimg = b.dependency("zigimg", .{
+        .target = target,
+        .optimize = optimize,
+    });
 
     return .{
         .dep_sokol = dep_sokol,
         .dep_cimgui = dep_cimgui,
         .dep_shdc = dep_shdc,
         .dep_zgltf = dep_zgltf,
+        .dep_zigimg = dep_zigimg,
     };
 }
 
@@ -205,6 +216,7 @@ fn buildFor(b: *std.Build, variant: BuildVariant) !void {
                     .{ .name = "sokol", .module = deps.dep_sokol.module("sokol") },
                     .{ .name = "cimgui", .module = deps.dep_cimgui.module("cimgui") },
                     .{ .name = "zgltf", .module = deps.dep_zgltf.module("zgltf") },
+                    .{ .name = "zigimg", .module = deps.dep_zigimg.module("zigimg") },
                 },
             });
             const shaders = try compileShaders(b, deps.dep_shdc);
@@ -257,6 +269,7 @@ fn buildFor(b: *std.Build, variant: BuildVariant) !void {
                     .{ .name = "sokol", .module = deps.dep_sokol.module("sokol") },
                     .{ .name = "cimgui", .module = deps.dep_cimgui.module("cimgui") },
                     .{ .name = "zgltf", .module = deps.dep_zgltf.module("zgltf") },
+                    .{ .name = "zigimg", .module = deps.dep_zigimg.module("zigimg") },
                 },
             });
             const web_artifacts = try buildWeb(b, root_mod, deps, variant, true);
