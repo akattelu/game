@@ -17,7 +17,6 @@ const Dependencies = struct {
     dep_shdc: *std.Build.Dependency,
     dep_zgltf: *std.Build.Dependency,
 };
-
 const SokolTargetMode = enum { webgpu, webgl, native };
 const SokolTarget = union(SokolTargetMode) {
     webgpu: void,
@@ -80,6 +79,11 @@ pub fn build(b: *std.Build) !void {
             .optimize = optimize,
             .target = .{ .native = .{ .cpu_arch = .x86_64, .os_tag = .windows } },
             .root_app_name = "terrain_gpu",
+        },
+        .{
+            .optimize = optimize,
+            .target = .{ .native = .{} },
+            .root_app_name = "gltf",
         },
     };
     for (variants) |variant| {
