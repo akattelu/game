@@ -48,6 +48,9 @@ pub const GltfViewer = struct {
     gltf: ?Gltf = null,
     selected_index: ?usize = null,
 
+    // Other UI
+    imgui_window_open: bool = true,
+
     // Camera
     eye: Vec3 = .{ .x = 110.0, .y = 125.0, .z = 30.0 },
     camera_theta: f32 = std.math.pi / 8.0,
@@ -209,7 +212,7 @@ pub const GltfViewer = struct {
             sgimgui.drawMenu("sokol-gfx");
             ig.igEndMainMenuBar();
         }
-        if (ig.igBegin("Terrain Playground", null, ig.ImGuiWindowFlags_AlwaysAutoResize)) {
+        if (ig.igBegin("GLTF/GLB Viewer", &self.imgui_window_open, ig.ImGuiWindowFlags_AlwaysAutoResize)) {
             if (ig.igBeginTabBar("Settings", 0)) {
                 if (ig.igBeginTabItem("General", null, 0)) {
                     _ = ig.igText("Total number of primitives in file: %d", self.primitives.?.len);
@@ -253,8 +256,8 @@ pub const GltfViewer = struct {
                 }
                 ig.igEndTabBar();
             }
-            ig.igEnd();
         }
+        ig.igEnd();
     }
 };
 
