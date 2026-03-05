@@ -26,6 +26,7 @@ inline fn allocator() std.mem.Allocator {
 }
 
 var st: GltfViewer = .{};
+
 const Vertex = extern struct {
     x: f32,
     y: f32,
@@ -35,10 +36,17 @@ const Vertex = extern struct {
     v: i16,
     normal: Vec3,
 };
+
+const Primitive = struct {
+    binding: sg.Bindings = .{},
+    object_count: u32 = 0,
+};
+
 pub const GltfViewer = struct {
     // GLTF Core
-    gltf_mesh_vertices: ?[]Vertex = null,
-    gltf_mesh_indices: ?[]u16 = null,
+    primitives: ?[]Primitive = null,
+    gltf: ?Gltf = null,
+    selected_index: ?usize = null,
 
     // Camera
     eye: Vec3 = .{ .x = 110.0, .y = 125.0, .z = 30.0 },
@@ -48,7 +56,6 @@ pub const GltfViewer = struct {
     mouse_down: bool = false,
 
     // Sokol bindings
-    bindings: sg.Bindings = .{},
     pipeline: sg.Pipeline = .{},
     pass_action: sg.PassAction = .{},
 
@@ -61,81 +68,108 @@ pub const GltfViewer = struct {
     elevation_angle: f32 = 0.0,
     light_color: Vec3 = Vec3.ones(),
 
-    pub fn populate(self: *GltfViewer, alloc: std.mem.Allocator, path: []const u8) !void {
-        const buffer = try std.fs.cwd().readFileAllocOptions(
-            alloc,
-            path,
-            512_000_000,
-            null,
-            .@"4",
-            null,
-        );
-        defer alloc.free(buffer);
-
-        var vertices: std.ArrayList(Vertex) = .empty;
-        var indices: std.ArrayList(u16) = .empty;
+    pub fn loadGlb(self: *GltfViewer, alloc: std.mem.Allocator, path: []const u8) !void {
+        const buffer = try std.fs.cwd().readFileAllocOptions(alloc, path, 512_000_000, null, .@"4", null);
 
         var gltf = Gltf.init(alloc);
-        defer gltf.deinit();
-
         try gltf.parse(buffer);
+        self.gltf = gltf;
+    }
 
-        for (gltf.data.meshes) |mesh| {
-            for (mesh.primitives) |primitive| {
-                for (primitive.attributes) |attr| {
-                    switch (attr) {
-                        .position => |pos| {
-                            const accessor = gltf.data.accessors[pos];
-                            var it = accessor.iterator(f32, &gltf, gltf.glb_binary.?);
-                            while (it.next()) |v| {
-                                try vertices.append(alloc, .{
-                                    .x = v[0],
-                                    .y = v[1],
-                                    .z = v[2],
-                                    .normal = Vec3.new(1.0, 0.0, 0.0),
-                                    .color = util.rgbaToU32(255, 255, 255, 255),
-                                    .u = 0,
-                                    .v = 0,
-                                });
-                            }
-                        },
-                        .normal => |normal| {
-                            const accessor = gltf.data.accessors[normal];
-                            var it = accessor.iterator(f32, &gltf, gltf.glb_binary.?);
-                            var i: u32 = 0;
-                            while (it.next()) |n| : (i += 1) {
-                                vertices.items[i].normal = Vec3.new(n[0], n[1], n[2]);
-                            }
-                        },
-                        .color => |color| {
-                            const accessor = gltf.data.accessors[color];
-                            var it = accessor.iterator(u32, &gltf, gltf.glb_binary.?);
-                            var i: u32 = 0;
-                            while (it.next()) |n| : (i += 1) {
-                                vertices.items[i].color = n[0];
-                            }
-                        },
-                        .texcoord => |texcoord| {
-                            print("Primitive texcoord: {any}\n", .{texcoord});
-                        },
-                        else => {},
-                    }
+    pub fn initPrimitives(self: *GltfViewer, alloc: std.mem.Allocator) !void {
+        var primitives: std.ArrayList(Primitive) = .empty;
+        const gltf = self.gltf.?;
+        const mesh = gltf.data.meshes[0];
+
+        for (mesh.primitives, 0..) |primitive, prim_idx| {
+            _ = prim_idx;
+            var bindings: sg.Bindings = .{};
+            var vertices: std.ArrayList(Vertex) = .empty;
+            var indices: std.ArrayList(u16) = .empty;
+            for (primitive.attributes) |attr| {
+                switch (attr) {
+                    .position => |pos| {
+                        const accessor = gltf.data.accessors[pos];
+                        var it = accessor.iterator(f32, &gltf, gltf.glb_binary.?);
+                        while (it.next()) |v| {
+                            try vertices.append(alloc, .{
+                                .x = v[0],
+                                .y = v[1],
+                                .z = v[2],
+                                .normal = Vec3.new(1.0, 0.0, 0.0),
+                                .color = util.rgbaToU32(255, 255, 255, 255),
+                                .u = 0,
+                                .v = 0,
+                            });
+                        }
+                    },
+                    .normal => |normal| {
+                        const accessor = gltf.data.accessors[normal];
+                        var it = accessor.iterator(f32, &gltf, gltf.glb_binary.?);
+                        var i: u32 = 0;
+                        while (it.next()) |n| : (i += 1) {
+                            vertices.items[i].normal = Vec3.new(n[0], n[1], n[2]);
+                        }
+                    },
+                    .color => |color| {
+                        const accessor = gltf.data.accessors[color];
+                        var it = accessor.iterator(u32, &gltf, gltf.glb_binary.?);
+                        var i: u32 = 0;
+                        while (it.next()) |n| : (i += 1) {
+                            vertices.items[i].color = n[0];
+                        }
+                    },
+                    .texcoord => |texcoord| {
+                        print("Primitive texcoord: {any}\n", .{texcoord});
+                    },
+                    else => {},
                 }
-                if (primitive.indices) |prim_indices| {
-                    const accessor = gltf.data.accessors[prim_indices];
+            }
+            if (primitive.indices) |prim_indices| {
+                const accessor = gltf.data.accessors[prim_indices];
+                if (accessor.component_type == .unsigned_short) {
                     var it = accessor.iterator(u16, &gltf, gltf.glb_binary.?);
                     while (it.next()) |i| {
                         try indices.append(alloc, i[0]);
                     }
                 }
-                print("\n", .{});
             }
-            break;
+
+            const owned_indices = try indices.toOwnedSlice(alloc);
+            bindings.vertex_buffers[0] = sg.makeBuffer(.{
+                .label = "Primitive Vertex Buffer",
+                .usage = .{ .vertex_buffer = true },
+                .data = sg.asRange(try vertices.toOwnedSlice(alloc)),
+            });
+            bindings.index_buffer = sg.makeBuffer(.{
+                .label = "Primitive Index Buffer",
+                .usage = .{ .index_buffer = true },
+                .data = sg.asRange(owned_indices),
+            });
+            bindings.views[shd.VIEW_tex] = sg.makeView(.{
+                .texture = .{
+                    .image = sg.makeImage(.{
+                        .width = 4,
+                        .height = 4,
+                        .data = init: {
+                            var data = sg.ImageData{};
+                            data.mip_levels[0] = sg.asRange(&[4 * 4]u32{
+                                0xFFFFFFFF, 0xFF000000, 0xFFFFFFFF, 0xFF000000,
+                                0xFF000000, 0xFFFFFFFF, 0xFF000000, 0xFFFFFFFF,
+                                0xFFFFFFFF, 0xFF000000, 0xFFFFFFFF, 0xFF000000,
+                                0xFF000000, 0xFFFFFFFF, 0xFF000000, 0xFFFFFFFF,
+                            });
+                            break :init data;
+                        },
+                    }),
+                },
+            });
+            bindings.samplers[shd.SMP_smp] = sg.makeSampler(.{});
+            try primitives.append(alloc, .{ .binding = bindings, .object_count = @intCast(owned_indices.len) });
         }
 
         gltf.debugPrint();
-        self.gltf_mesh_vertices = try vertices.toOwnedSlice(alloc);
-        self.gltf_mesh_indices = try indices.toOwnedSlice(alloc);
+        self.primitives = try primitives.toOwnedSlice(alloc);
     }
 
     pub fn deinit(self: *GltfViewer, alloc: std.mem.Allocator) void {
@@ -178,8 +212,24 @@ pub const GltfViewer = struct {
         if (ig.igBegin("Terrain Playground", null, ig.ImGuiWindowFlags_AlwaysAutoResize)) {
             if (ig.igBeginTabBar("Settings", 0)) {
                 if (ig.igBeginTabItem("General", null, 0)) {
-                    _ = ig.igBulletText("Vertex Count: %d", self.gltf_mesh_vertices.?.len);
-                    _ = ig.igBulletText("Index Count: %d", self.gltf_mesh_indices.?.len);
+                    _ = ig.igText("Total number of primitives in file: %d", self.primitives.?.len);
+                    _ = ig.igText("Primitive Count: %d", self.primitives.?.len);
+                    if (self.selected_index) |idx| {
+                        _ = ig.igText("Now viewing primitive number: %d", idx);
+                    } else {
+                        _ = ig.igText("Now viewing all primitives drawn together");
+                    }
+                    if (ig.igArrowButton("Primitive Right", ig.ImGuiDir_Right)) {
+                        if (self.selected_index) |idx| {
+                            if (idx + 1 >= self.primitives.?.len) {
+                                self.selected_index = null;
+                            } else {
+                                self.selected_index.? += 1;
+                            }
+                        } else {
+                            self.selected_index = 0;
+                        }
+                    }
                     ig.igEndTabItem();
                 }
                 if (ig.igBeginTabItem("Meta", null, 0)) {
@@ -198,7 +248,7 @@ pub const GltfViewer = struct {
                 if (ig.igBeginTabItem("Camera", null, 0)) {
                     _ = ig.igSliderFloat("Camera Theta", &self.camera_theta, 0.0, 2 * std.math.pi);
                     _ = ig.igSliderFloat("Camera Phi", &self.camera_phi, 0.0, 2 * std.math.pi);
-                    _ = ig.igSliderFloat("Camera Radius", &self.camera_radius, 10.0, 300.0);
+                    _ = ig.igSliderFloat("Camera Radius", &self.camera_radius, 10.0, 900.0);
                     ig.igEndTabItem();
                 }
                 ig.igEndTabBar();
@@ -222,41 +272,13 @@ export fn init(userdata: ?*anyopaque) void {
     });
 
     const state: *GltfViewer = @ptrCast(@alignCast(userdata));
+    state.initPrimitives(allocator()) catch {
+        @panic("Failed to initialize primitives");
+    };
 
-    // Construct the grid mesh just so we can size the initial dynamic buffer
-    state.bindings.vertex_buffers[0] = sg.makeBuffer(.{
-        .label = "GLTF Mesh Vertices Data",
-        .usage = .{ .vertex_buffer = true },
-        .data = sg.asRange(state.gltf_mesh_vertices.?),
-    });
-    state.bindings.index_buffer = sg.makeBuffer(.{
-        .label = "GLTF Mesh Indices Data",
-        .usage = .{ .index_buffer = true },
-        .data = sg.asRange(state.gltf_mesh_indices.?),
-    });
-    // create a small checker-board image and texture view
-    state.bindings.views[shd.VIEW_tex] = sg.makeView(.{
-        .texture = .{
-            .image = sg.makeImage(.{
-                .width = 4,
-                .height = 4,
-                .data = init: {
-                    var data = sg.ImageData{};
-                    data.mip_levels[0] = sg.asRange(&[4 * 4]u32{
-                        0xFFFFFFFF, 0xFF000000, 0xFFFFFFFF, 0xFF000000,
-                        0xFF000000, 0xFFFFFFFF, 0xFF000000, 0xFFFFFFFF,
-                        0xFFFFFFFF, 0xFF000000, 0xFFFFFFFF, 0xFF000000,
-                        0xFF000000, 0xFFFFFFFF, 0xFF000000, 0xFFFFFFFF,
-                    });
-                    break :init data;
-                },
-            }),
-        },
-    });
-    state.bindings.samplers[shd.SMP_smp] = sg.makeSampler(.{});
     state.pipeline = sg.makePipeline(
         .{
-            .label = "CPU Noise and Lighting Pipeline",
+            .label = "CPU Noise and Normal Calculation Pipeline",
             .shader = sg.makeShader(shd.terrainShaderDesc(sg.queryBackend())),
             .layout = init: {
                 var l = sg.VertexLayoutState{};
@@ -293,12 +315,21 @@ export fn frame(userdata: ?*anyopaque) void {
 
     // Pipeline
     sg.applyPipeline(state.pipeline);
-    sg.applyBindings(state.bindings);
-    sg.applyUniforms(shd.UB_vs_params, sg.asRange(&state.vsUniforms()));
-    sg.applyUniforms(shd.UB_fs_params, sg.asRange(&state.fsUniforms()));
+    if (state.selected_index) |idx| {
+        const prim = state.primitives.?[idx];
+        sg.applyBindings(prim.binding);
+        sg.applyUniforms(shd.UB_vs_params, sg.asRange(&state.vsUniforms()));
+        sg.applyUniforms(shd.UB_fs_params, sg.asRange(&state.fsUniforms()));
+        sg.draw(0, prim.object_count, 1);
+    } else {
+        for (state.primitives.?) |prim| {
+            sg.applyBindings(prim.binding);
+            sg.applyUniforms(shd.UB_vs_params, sg.asRange(&state.vsUniforms()));
+            sg.applyUniforms(shd.UB_fs_params, sg.asRange(&state.fsUniforms()));
+            sg.draw(0, prim.object_count, 1);
+        }
+    }
 
-    // Draw
-    sg.draw(0, @intCast(state.gltf_mesh_indices.?.len), 1);
     sdtx.draw();
     sgimgui.draw();
     simgui.render();
@@ -350,7 +381,7 @@ pub fn main() !void {
     defer iter.deinit();
     _ = iter.next();
     if (iter.next()) |path| {
-        try st.populate(alloc, path);
+        try st.loadGlb(alloc, path);
     }
     sapp.run(.{
         .init_userdata_cb = init,
