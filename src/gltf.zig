@@ -64,7 +64,7 @@ pub const GltfViewer = struct {
 
     // Lighting
     apply_texture: bool = false,
-    apply_lighting: bool = true,
+    apply_lighting: bool = false,
     ambient_intensity: f32 = 0.2,
     normal_cell_spacing: f32 = 2.0,
     azimuth_angle: f32 = 0.0,
@@ -123,7 +123,13 @@ pub const GltfViewer = struct {
                         }
                     },
                     .texcoord => |texcoord| {
-                        print("Primitive texcoord: {any}\n", .{texcoord});
+                        const accessor = gltf.data.accessors[texcoord];
+                        var it = accessor.iterator(f32, &gltf, gltf.glb_binary.?);
+                        var i: u32 = 0;
+                        while (it.next()) |uv| : (i += 1) {
+                            vertices.items[i].u = @intFromFloat(uv[0] * 32767.0);
+                            vertices.items[i].v = @intFromFloat(uv[1] * 32767.0);
+                        }
                     },
                     else => {},
                 }
@@ -136,6 +142,11 @@ pub const GltfViewer = struct {
                         try indices.append(alloc, i[0]);
                     }
                 }
+            }
+
+            if (primitive.material) |material| {
+                const accessor = gltf.data.accessors[material];
+                _ = accessor;
             }
 
             const owned_indices = try indices.toOwnedSlice(alloc);
@@ -241,6 +252,7 @@ pub const GltfViewer = struct {
                 }
                 if (ig.igBeginTabItem("Lighting", null, 0)) {
                     _ = ig.igCheckbox("Apply Lighting?", &self.apply_lighting);
+                    _ = ig.igCheckbox("Apply Texture?", &self.apply_texture);
                     _ = ig.igSliderFloat("Cell Spacing", &self.normal_cell_spacing, 0.01, 10.0);
                     _ = ig.igSliderFloat("Ambient Light Intensity", &self.ambient_intensity, 0.1, 1.0);
                     _ = ig.igSliderFloat("Azimuth Angle", &self.azimuth_angle, 0.0, 2 * std.math.pi);
