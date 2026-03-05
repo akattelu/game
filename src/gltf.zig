@@ -15,6 +15,7 @@ const sdtx = sokol.debugtext;
 const simgui = sokol.imgui;
 const sgimgui = sokol.sgimgui;
 const builtin = @import("builtin");
+const zigimg = @import("zigimg");
 const print = std.debug.print;
 
 inline fn allocator() std.mem.Allocator {
@@ -89,6 +90,8 @@ pub const GltfViewer = struct {
             var bindings: sg.Bindings = .{};
             var vertices: std.ArrayList(Vertex) = .empty;
             var indices: std.ArrayList(u16) = .empty;
+            var img_pixels: []const u8 = "";
+            var obj_count: u32 = 0;
             for (primitive.attributes) |attr| {
                 switch (attr) {
                     .position => |pos| {
@@ -134,6 +137,14 @@ pub const GltfViewer = struct {
                     else => {},
                 }
             }
+            // Load vertex buffer with all info from parsing vertex attributes
+            bindings.vertex_buffers[0] = sg.makeBuffer(.{
+                .label = "Primitive Vertex Buffer",
+                .usage = .{ .vertex_buffer = true },
+                .data = sg.asRange(try vertices.toOwnedSlice(alloc)),
+            });
+
+            // Read and load indices
             if (primitive.indices) |prim_indices| {
                 const accessor = gltf.data.accessors[prim_indices];
                 if (accessor.component_type == .unsigned_short) {
@@ -142,44 +153,69 @@ pub const GltfViewer = struct {
                         try indices.append(alloc, i[0]);
                     }
                 }
+
+                const owned_indices = try indices.toOwnedSlice(alloc);
+                bindings.index_buffer = sg.makeBuffer(.{
+                    .label = "Primitive Index Buffer",
+                    .usage = .{ .index_buffer = true },
+                    .data = sg.asRange(owned_indices),
+                });
+                obj_count = @intCast(owned_indices.len);
             }
 
-            if (primitive.material) |material| {
-                const accessor = gltf.data.accessors[material];
-                _ = accessor;
-            }
+            if (primitive.material) |mat_idx| {
+                const material = gltf.data.materials[mat_idx];
+                if (material.metallic_roughness.base_color_texture) |tex_info| {
+                    const texture = gltf.data.textures[tex_info.index];
+                    if (texture.source) |img_idx| {
+                        const image = gltf.data.images[img_idx];
+                        if (image.data) |encoded_bytes| {
+                            var img = try zigimg.Image.fromMemory(alloc, encoded_bytes);
+                            const w: i32 = @intCast(img.width);
+                            const h: i32 = @intCast(img.height);
+                            try img.convert(alloc, .rgba32);
+                            img_pixels = img.rawBytes();
 
-            const owned_indices = try indices.toOwnedSlice(alloc);
-            bindings.vertex_buffers[0] = sg.makeBuffer(.{
-                .label = "Primitive Vertex Buffer",
-                .usage = .{ .vertex_buffer = true },
-                .data = sg.asRange(try vertices.toOwnedSlice(alloc)),
-            });
-            bindings.index_buffer = sg.makeBuffer(.{
-                .label = "Primitive Index Buffer",
-                .usage = .{ .index_buffer = true },
-                .data = sg.asRange(owned_indices),
-            });
-            bindings.views[shd.VIEW_tex] = sg.makeView(.{
-                .texture = .{
-                    .image = sg.makeImage(.{
-                        .width = 4,
-                        .height = 4,
-                        .data = init: {
-                            var data = sg.ImageData{};
-                            data.mip_levels[0] = sg.asRange(&[4 * 4]u32{
-                                0xFFFFFFFF, 0xFF000000, 0xFFFFFFFF, 0xFF000000,
-                                0xFF000000, 0xFFFFFFFF, 0xFF000000, 0xFFFFFFFF,
-                                0xFFFFFFFF, 0xFF000000, 0xFFFFFFFF, 0xFF000000,
-                                0xFF000000, 0xFFFFFFFF, 0xFF000000, 0xFFFFFFFF,
+                            bindings.views[shd.VIEW_tex] = sg.makeView(.{
+                                .texture = .{
+                                    .image = sg.makeImage(.{
+                                        .width = w,
+                                        .height = h,
+                                        .pixel_format = .RGBA8,
+                                        .data = init: {
+                                            var data = sg.ImageData{};
+                                            data.mip_levels[0] = sg.asRange(img_pixels);
+                                            break :init data;
+                                        },
+                                    }),
+                                },
                             });
-                            break :init data;
+                        }
+                    }
+                } else {
+                    bindings.views[shd.VIEW_tex] = sg.makeView(.{
+                        .texture = .{
+                            .image = sg.makeImage(.{
+                                .width = 4,
+                                .height = 4,
+                                .data = init: {
+                                    var data = sg.ImageData{};
+                                    data.mip_levels[0] = sg.asRange(&[4 * 4]u32{
+                                        0xFFFFFFFF, 0xFF000000, 0xFFFFFFFF, 0xFF000000,
+                                        0xFF000000, 0xFFFFFFFF, 0xF000000,  0xFFFFFFFF,
+                                        0xFFFFFFFF, 0xFF000000, 0xFFFFFFFF, 0xFF000000,
+                                        0xFF000000, 0xFFFFFFFF, 0xFF000000, 0xFFFFFFFF,
+                                    });
+                                    break :init data;
+                                },
+                            }),
                         },
-                    }),
-                },
-            });
+                    });
+                }
+            }
+
             bindings.samplers[shd.SMP_smp] = sg.makeSampler(.{});
-            try primitives.append(alloc, .{ .binding = bindings, .object_count = @intCast(owned_indices.len) });
+            try primitives.append(alloc, .{ .binding = bindings, .object_count = obj_count });
         }
 
         gltf.debugPrint();
