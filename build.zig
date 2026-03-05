@@ -61,6 +61,26 @@ pub fn build(b: *std.Build) !void {
             .target = .{ .native = .{ .cpu_arch = .x86_64, .os_tag = .windows } },
             .root_app_name = "terrain_cpu",
         },
+        .{
+            .optimize = optimize,
+            .target = .webgpu,
+            .root_app_name = "terrain_gpu",
+        },
+        .{
+            .optimize = optimize,
+            .target = .webgl,
+            .root_app_name = "terrain_gpu",
+        },
+        .{
+            .optimize = optimize,
+            .target = .{ .native = .{} },
+            .root_app_name = "terrain_gpu",
+        },
+        .{
+            .optimize = optimize,
+            .target = .{ .native = .{ .cpu_arch = .x86_64, .os_tag = .windows } },
+            .root_app_name = "terrain_gpu",
+        },
     };
     for (variants) |variant| {
         try buildFor(b, variant);
@@ -205,8 +225,8 @@ fn buildFor(b: *std.Build, variant: BuildVariant) !void {
                 run_cmd.step.dependOn(&exe_install.step);
 
                 // Setup test step once only for native
-                const test_step = b.step("test", "Run tests");
                 const test_name = try sprint(b.allocator, "{s}_tests", .{variant.root_app_name});
+                const test_step = b.step(test_name, "Run tests");
                 const exe_tests = b.addTest(.{ .name = test_name, .root_module = exe.root_module });
                 const run_exe_tests = b.addRunArtifact(exe_tests);
                 const tests_install = b.addInstallArtifact(exe_tests, .{});

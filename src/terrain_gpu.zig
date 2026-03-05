@@ -1,9 +1,9 @@
 const std = @import("std");
-const util = @import("util.zig");
-const math = @import("math.zig");
+const util = @import("lib/util.zig");
+const math = @import("lib/math.zig");
 const Mat4 = math.Mat4;
 const Vec3 = math.Vec3;
-const shd = @import("terrain.glsl.zig");
+const shd = @import("shaders/terrain.glsl.zig");
 const sokol = @import("sokol");
 const ig = @import("cimgui");
 const slog = sokol.log;
@@ -24,15 +24,11 @@ inline fn allocator() std.mem.Allocator {
 }
 
 var st = TerrainState{};
-
-const Vertex = extern struct {
+pub const FlatVertex = extern struct {
     x: f32,
     y: f32,
     z: f32,
-    color: u32,
-    u: i16,
-    v: i16,
-    normal: Vec3,
+    xz_n: [2]f32,
 };
 
 const TerrainState = struct {
@@ -42,7 +38,6 @@ const TerrainState = struct {
     pass_action: sg.PassAction = .{},
 
     // General
-    mesh_vertices: c_int = 200,
     apply_texture: bool = false,
     seed: f32 = 0.0,
     animate: bool = false,
@@ -71,20 +66,29 @@ const TerrainState = struct {
     // Input
     mouse_down: bool = false,
 
-    fn vsUniforms(self: *TerrainState) shd.VsParams {
+    fn vsUniforms(self: *TerrainState) shd.VsGpuParams {
         const r = self.camera_radius;
         const phi = self.camera_phi;
         const theta = self.camera_theta;
+        const u_time = sapp.frameCount();
         return .{
             .mvp = Mat4.mvp(Vec3.new(
                 r * @sin(phi) * @cos(theta),
                 r * @cos(phi),
                 r * @sin(phi) * @sin(theta),
             ), sapp.widthf(), sapp.heightf()),
+            .frequency = self.frequency,
+            .amplitude = self.amplitude,
+            .lacunarity = self.lacunarity,
+            .persistence = self.persistence,
+            .octaves = self.octaves,
+            .normal_cell_spacing = self.normal_cell_spacing,
+            .u_time = @intCast(u_time),
+            .animate = @intFromBool(self.animate),
         };
     }
 
-    fn fsUniforms(self: *TerrainState) shd.FsParams {
+    fn fsUniforms(self: *TerrainState) shd.FsGpuParams {
         return .{
             .light_dir = Vec3.new(
                 @cos(self.elevation_angle) * @sin(self.azimuth_angle),
@@ -99,56 +103,29 @@ const TerrainState = struct {
     }
 
     fn objectCount(self: *TerrainState) u32 {
-        const n: u32 = @intCast(self.mesh_vertices);
+        _ = self;
+        const n: u32 = @intCast(200);
         return (n - 1) * (n - 1) * 6;
     }
 };
-
-fn vertices(alloc: std.mem.Allocator, count: c_int, state: *TerrainState) []Vertex {
+pub fn emptySquareMesh(alloc: std.mem.Allocator, count: c_int) []FlatVertex {
     const n: usize = @intCast(count);
-    var vs: std.ArrayList(Vertex) = .empty;
+    var vs: std.ArrayList(FlatVertex) = .empty;
     const nf: f32 = @floatFromInt(n);
-    const nm: f32 = @floatFromInt(n - 1);
     for (0..n) |i| {
         for (0..n) |j| {
-            const r: u8 = @intFromFloat(util.mapRange(@floatFromInt(i), 0, nm, 0, 255));
-            const g: u8 = @intFromFloat(util.mapRange(@floatFromInt(j), 0, nm, 0, 255));
-            const b: u8 = 128;
-
-            const h: f32 = util.sampleNoise(@floatFromInt(i), @floatFromInt(j), .{
-                .frequency = state.frequency,
-                .amplitude = state.amplitude,
-                .octaves = state.octaves,
-                .seed = state.seed,
-                .lacunarity = state.lacunarity,
-                .persistence = state.persistence,
-            });
             const x: f32 = @as(f32, @floatFromInt(i)) - (nf / 2.0);
-            const y: f32 = if (i == 0 or j == 0 or i == (n - 1) or j == (n - 1)) 0 else h;
             const z: f32 = @as(f32, @floatFromInt(j)) - (nf / 2.0);
-            const color: u32 = util.rgbaToU32(r, g, b, 255);
-            const u: i16 = @intFromFloat(@as(f32, @floatFromInt(i)) / @as(f32, @floatFromInt(n)) * 32767.0);
-            const v: i16 = @intFromFloat(@as(f32, @floatFromInt(j)) / @as(f32, @floatFromInt(n)) * 32767.0);
             vs.append(alloc, .{
                 .x = x,
-                .y = y,
+                .y = 0.0,
                 .z = z,
-                .color = color,
-                .u = u,
-                .v = v,
-                .normal = Vec3.zero(),
-            }) catch {
-                std.debug.print("Failed to append to vertices set \n", .{});
-            };
+                .xz_n = [2]f32{ x / (nf / 2.0), z / (nf / 2.0) },
+            }) catch unreachable;
         }
     }
 
-    populateNormals(&vs.items, n, state);
-
-    return vs.toOwnedSlice(alloc) catch {
-        std.debug.print("Failed to convert vertices list to owned slice\n", .{});
-        return &[_]Vertex{};
-    };
+    return vs.toOwnedSlice(alloc) catch unreachable;
 }
 
 fn indices(alloc: std.mem.Allocator, index_count: c_int) ![]u16 {
@@ -184,9 +161,9 @@ fn ui(state: *TerrainState) void {
     if (ig.igBegin("Terrain Playground", null, ig.ImGuiWindowFlags_AlwaysAutoResize)) {
         if (ig.igBeginTabBar("Settings", 0)) {
             if (ig.igBeginTabItem("General", null, 0)) {
-                _ = ig.igSliderInt("Side Length", &state.mesh_vertices, 2, 200);
                 _ = ig.igCheckbox("Apply Texture?", &state.apply_texture);
                 _ = ig.igSliderFloat("Seed", &state.seed, 0.0, 1000.0);
+                _ = ig.igCheckbox("Animate?", &state.animate);
                 ig.igEndTabItem();
             }
             if (ig.igBeginTabItem("Noise", null, 0)) {
@@ -222,20 +199,6 @@ fn ui(state: *TerrainState) void {
     }
 }
 
-fn populateNormals(vxs: *[]Vertex, n: usize, state: *TerrainState) void {
-    const vs = vxs.*;
-    for (0..n) |i| {
-        for (0..n) |j| {
-            const hl: f32 = vs[index(@max(i, 1) - 1, j, n)].y;
-            const hr: f32 = vs[index(@min(i + 1, n - 1), j, n)].y;
-            const hd: f32 = vs[index(i, @max(j, 1) - 1, n)].y;
-            const hu: f32 = vs[index(i, @min(j + 1, n - 1), n)].y;
-            const normal = Vec3.norm(Vec3.new(hl - hr, state.normal_cell_spacing, hd - hu));
-            vs[index(i, j, n)].normal = normal;
-        }
-    }
-}
-
 inline fn index(i: usize, j: usize, n: usize) usize {
     return (i * n) + j;
 }
@@ -262,10 +225,14 @@ export fn init(userdata: ?*anyopaque) void {
         std.debug.print("Failed to read indices {any}\n", .{err});
         break :blk empty;
     };
-    const vertices_range = sg.asRange(vertices(alloc, 200, state));
+    const vertices_range = sg.asRange(emptySquareMesh(alloc, 200));
     const indices_range = sg.asRange(idcs);
-    const indexBuffer = sg.makeBuffer(.{ .label = "Mesh Index Buffer", .usage = .{ .dynamic_update = true, .index_buffer = true }, .size = indices_range.size });
-    state.bindings.vertex_buffers[0] = sg.makeBuffer(.{ .label = "CPU Heightmap", .usage = .{ .dynamic_update = true, .vertex_buffer = true }, .size = vertices_range.size });
+    const indexBuffer = sg.makeBuffer(.{
+        .label = "Mesh Index Buffer",
+        .usage = .{ .dynamic_update = false, .index_buffer = true },
+        .data = indices_range,
+    });
+    state.bindings.vertex_buffers[0] = sg.makeBuffer(.{ .label = "GPU Flat Mesh", .usage = .{ .dynamic_update = false, .vertex_buffer = true }, .data = vertices_range });
     state.bindings.index_buffer = indexBuffer;
     // create a small checker-board image and texture view
     state.bindings.views[shd.VIEW_tex] = sg.makeView(.{
@@ -289,14 +256,12 @@ export fn init(userdata: ?*anyopaque) void {
     state.bindings.samplers[shd.SMP_smp] = sg.makeSampler(.{});
     state.pipeline = sg.makePipeline(
         .{
-            .label = "CPU Noise and Lighting Pipeline",
-            .shader = sg.makeShader(shd.terrainShaderDesc(sg.queryBackend())),
+            .label = "GPU Noise and Lighting Pipeline",
+            .shader = sg.makeShader(shd.terraingpuShaderDesc(sg.queryBackend())),
             .layout = init: {
                 var l = sg.VertexLayoutState{};
-                l.attrs[shd.ATTR_terrain_position].format = .FLOAT3;
-                l.attrs[shd.ATTR_terrain_color0].format = .UBYTE4N;
-                l.attrs[shd.ATTR_terrain_texcoord0].format = .SHORT2N;
-                l.attrs[shd.ATTR_terrain_normal].format = .FLOAT3;
+                l.attrs[shd.ATTR_terrainGPU_position].format = .FLOAT3;
+                l.attrs[shd.ATTR_terrainGPU_xz_n].format = .FLOAT2;
                 break :init l;
             },
             .index_type = .UINT16,
@@ -311,20 +276,20 @@ export fn init(userdata: ?*anyopaque) void {
 export fn frame(userdata: ?*anyopaque) void {
     var arena = std.heap.ArenaAllocator.init(allocator());
     defer arena.deinit();
-    const alloc = arena.allocator();
+    // const alloc = arena.allocator();
 
     const state: *TerrainState = @ptrCast(@alignCast(userdata));
-    const empty: []const u16 = &[_]u16{ 1, 2, 3 };
-    const frame_indices = indices(alloc, state.mesh_vertices) catch |err| blk: {
-        std.debug.print("Failed to read indices {any}\n", .{err});
-        break :blk empty;
-    };
-    const indices_range = sg.asRange(frame_indices);
-    sg.updateBuffer(state.bindings.index_buffer, indices_range);
+    // const empty: []const u16 = &[_]u16{ 1, 2, 3 };
+    // const frame_indices = indices(alloc, state.mesh_vertices) catch |err| blk: {
+    //     std.debug.print("Failed to read indices {any}\n", .{err});
+    //     break :blk empty;
+    // };
+    // const indices_range = sg.asRange(frame_indices);
+    // sg.updateBuffer(state.bindings.index_buffer, indices_range);
 
-    const frame_vertices = vertices(alloc, state.mesh_vertices, state);
-    const vertices_range = sg.asRange(frame_vertices);
-    sg.updateBuffer(state.bindings.vertex_buffers[0], vertices_range);
+    // const frame_vertices = emptySquareMesh(alloc, state.mesh_vertices);
+    // const vertices_range = sg.asRange(frame_vertices);
+    // sg.updateBuffer(state.bindings.vertex_buffers[0], vertices_range);
 
     // Setup imgui
     sg.beginPass(.{ .swapchain = sglue.swapchain(), .action = state.pass_action });
@@ -339,8 +304,8 @@ export fn frame(userdata: ?*anyopaque) void {
     // Pipeline
     sg.applyPipeline(state.pipeline);
     sg.applyBindings(state.bindings);
-    sg.applyUniforms(shd.UB_vs_params, sg.asRange(&state.vsUniforms()));
-    sg.applyUniforms(shd.UB_fs_params, sg.asRange(&state.fsUniforms()));
+    sg.applyUniforms(shd.UB_vs_gpu_params, sg.asRange(&state.vsUniforms()));
+    sg.applyUniforms(shd.UB_fs_gpu_params, sg.asRange(&state.fsUniforms()));
 
     // Draw
     sg.draw(0, state.objectCount(), 1);
@@ -399,7 +364,7 @@ pub fn main() !void {
         .width = 1280,
         .height = 960,
         .icon = .{ .sokol_default = true },
-        .window_title = "game",
+        .window_title = "Terrain (GPU)",
         .sample_count = 4,
         .logger = .{ .func = slog.func },
         .html5 = .{ .canvas_selector = "#canvas" },

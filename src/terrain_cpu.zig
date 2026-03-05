@@ -45,7 +45,6 @@ const TerrainState = struct {
     mesh_vertices: c_int = 200,
     apply_texture: bool = false,
     seed: f32 = 0.0,
-    animate: bool = false,
 
     // Lighting
     apply_lighting: bool = true,
@@ -399,7 +398,7 @@ pub fn main() !void {
         .width = 1280,
         .height = 960,
         .icon = .{ .sokol_default = true },
-        .window_title = "game",
+        .window_title = "Terrain (CPU)",
         .sample_count = 4,
         .logger = .{ .func = slog.func },
         .html5 = .{ .canvas_selector = "#canvas" },

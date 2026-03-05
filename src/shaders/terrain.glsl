@@ -129,8 +129,8 @@ void main() {
 
 
 @fs fs
-// layout(binding=0) uniform texture2D tex;
-// layout(binding=0) uniform sampler smp;
+layout(binding=0) uniform texture2D tex;
+layout(binding=0) uniform sampler smp;
 
 layout(binding=1) uniform fs_params {
     vec3 light_dir;
@@ -147,8 +147,7 @@ out vec4 frag_color;
 
 
 void main() {
-    // vec4 tex_color = texture(sampler2D(tex, smp), uv);
-    vec4 tex_color = color;
+    vec4 tex_color = texture(sampler2D(tex, smp), uv);
    
     if (use_lighting ==  1.0) {
         float diffuse = max(dot(normalize(v_normal), normalize(light_dir)), 0.0);
