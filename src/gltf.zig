@@ -17,6 +17,7 @@ const sgimgui = sokol.sgimgui;
 const builtin = @import("builtin");
 const zigimg = @import("zigimg");
 const print = std.debug.print;
+const sprint = std.fmt.allocPrint;
 
 inline fn allocator() std.mem.Allocator {
     if (builtin.cpu.arch.isWasm()) {
@@ -64,7 +65,7 @@ pub const GltfViewer = struct {
     pass_action: sg.PassAction = .{},
 
     // Lighting
-    apply_texture: bool = false,
+    apply_texture: bool = true,
     apply_lighting: bool = false,
     ambient_intensity: f32 = 0.2,
     normal_cell_spacing: f32 = 2.0,
@@ -86,7 +87,6 @@ pub const GltfViewer = struct {
         const mesh = gltf.data.meshes[0];
 
         for (mesh.primitives, 0..) |primitive, prim_idx| {
-            _ = prim_idx;
             var bindings: sg.Bindings = .{};
             var vertices: std.ArrayList(Vertex) = .empty;
             var indices: std.ArrayList(u16) = .empty;
@@ -118,12 +118,13 @@ pub const GltfViewer = struct {
                         }
                     },
                     .color => |color| {
-                        const accessor = gltf.data.accessors[color];
-                        var it = accessor.iterator(u32, &gltf, gltf.glb_binary.?);
-                        var i: u32 = 0;
-                        while (it.next()) |n| : (i += 1) {
-                            vertices.items[i].color = n[0];
-                        }
+                        _ = color;
+                        // const accessor = gltf.data.accessors[color];
+                        // var it = accessor.iterator(u32, &gltf, gltf.glb_binary.?);
+                        // var i: u32 = 0;
+                        // while (it.next()) |n| : (i += 1) {
+                        //     vertices.items[i].color = n[0];
+                        // }
                     },
                     .texcoord => |texcoord| {
                         const accessor = gltf.data.accessors[texcoord];
@@ -163,6 +164,7 @@ pub const GltfViewer = struct {
                 obj_count = @intCast(owned_indices.len);
             }
 
+            // Material processing
             if (primitive.material) |mat_idx| {
                 const material = gltf.data.materials[mat_idx];
                 if (material.metallic_roughness.base_color_texture) |tex_info| {
@@ -174,9 +176,14 @@ pub const GltfViewer = struct {
                             const w: i32 = @intCast(img.width);
                             const h: i32 = @intCast(img.height);
                             try img.convert(alloc, .rgba32);
+                            // native format: .rgb24
                             img_pixels = img.rawBytes();
+                            std.debug.print("native format: {}\n", .{img.pixelFormat()});
+                            const raw = img.rawBytes();
+                            std.debug.print("first pixel RGBA: {d} {d} {d} {d}\n", .{ raw[0], raw[1], raw[2], raw[3] });
 
                             bindings.views[shd.VIEW_tex] = sg.makeView(.{
+                                .label = (try sprint(alloc, "{s} Metallic Roughness Base Texture for primitive {d}", .{ material.name.?, prim_idx })).ptr,
                                 .texture = .{
                                     .image = sg.makeImage(.{
                                         .width = w,
@@ -193,7 +200,9 @@ pub const GltfViewer = struct {
                         }
                     }
                 } else {
+                    // Load base texture, even if it won't be applied?
                     bindings.views[shd.VIEW_tex] = sg.makeView(.{
+                        .label = (try sprint(alloc, "{s} Empty Texture for primitive {d}", .{ material.name.?, prim_idx })).ptr,
                         .texture = .{
                             .image = sg.makeImage(.{
                                 .width = 4,
@@ -201,10 +210,10 @@ pub const GltfViewer = struct {
                                 .data = init: {
                                     var data = sg.ImageData{};
                                     data.mip_levels[0] = sg.asRange(&[4 * 4]u32{
-                                        0xFFFFFFFF, 0xFF000000, 0xFFFFFFFF, 0xFF000000,
-                                        0xFF000000, 0xFFFFFFFF, 0xF000000,  0xFFFFFFFF,
-                                        0xFFFFFFFF, 0xFF000000, 0xFFFFFFFF, 0xFF000000,
-                                        0xFF000000, 0xFFFFFFFF, 0xFF000000, 0xFFFFFFFF,
+                                        0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
+                                        0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
+                                        0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
+                                        0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
                                     });
                                     break :init data;
                                 },
@@ -220,11 +229,6 @@ pub const GltfViewer = struct {
 
         gltf.debugPrint();
         self.primitives = try primitives.toOwnedSlice(alloc);
-    }
-
-    pub fn deinit(self: *GltfViewer, alloc: std.mem.Allocator) void {
-        alloc.free(self.gltf_mesh_indices);
-        alloc.free(self.gltf_mesh_vertices);
     }
 
     fn vsUniforms(self: *GltfViewer) shd.VsParams {
@@ -299,7 +303,7 @@ pub const GltfViewer = struct {
                 if (ig.igBeginTabItem("Camera", null, 0)) {
                     _ = ig.igSliderFloat("Camera Theta", &self.camera_theta, 0.0, 2 * std.math.pi);
                     _ = ig.igSliderFloat("Camera Phi", &self.camera_phi, 0.0, 2 * std.math.pi);
-                    _ = ig.igSliderFloat("Camera Radius", &self.camera_radius, 10.0, 900.0);
+                    _ = ig.igSliderFloatEx("Camera Radius", &self.camera_radius, 1.0, 900.0, "%2f", ig.ImGuiSliderFlags_Logarithmic);
                     ig.igEndTabItem();
                 }
                 ig.igEndTabBar();
@@ -352,6 +356,7 @@ export fn frame(userdata: ?*anyopaque) void {
     var arena = std.heap.ArenaAllocator.init(allocator());
     defer arena.deinit();
     const state: *GltfViewer = @ptrCast(@alignCast(userdata));
+    _ = arena.allocator();
 
     // Setup imgui
     sg.beginPass(.{ .swapchain = sglue.swapchain(), .action = state.pass_action });
@@ -402,7 +407,7 @@ export fn event(e: [*c]const sapp.Event, userdata: ?*anyopaque) callconv(.c) voi
     var s: *GltfViewer = @ptrCast(@alignCast(userdata));
     switch (e.*.type) {
         .MOUSE_SCROLL => {
-            s.camera_radius = @max(10.0, @min(300.0, s.camera_radius + e.*.scroll_y));
+            s.camera_radius = @max(1.0, @min(600.0, s.camera_radius + e.*.scroll_y));
         },
         .MOUSE_DOWN => {
             s.mouse_down = true;
