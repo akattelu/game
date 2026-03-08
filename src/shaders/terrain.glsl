@@ -19,7 +19,7 @@ out vec3 v_normal;
 void main() {
     gl_Position = mvp * position;
     color = color0;
-    uv = texcoord0 * 10.0;
+    uv = texcoord0;
     v_normal = normal;
 }
 @end
@@ -60,7 +60,7 @@ float noise (in vec2 _st) {
     float fx = fract(_st.x);
     float fz = fract(_st.y);
 
-    
+
     // Smoothstep
     float u = fx * fx * (3.0 - 2.0 * fx);
     float v = fz * fz * (3.0 - 2.0 * fz);
@@ -148,7 +148,7 @@ out vec4 frag_color;
 
 void main() {
     vec4 tex_color = texture(sampler2D(tex, smp), uv);
-   
+
     if (use_lighting ==  1.0) {
         float diffuse = max(dot(normalize(v_normal), normalize(light_dir)), 0.0);
         frag_color = mix(color, color * tex_color, use_texture) * (diffuse + ambient_intensity) * vec4(light_color, 1.0);
@@ -178,7 +178,7 @@ out vec4 frag_color;
 
 void main() {
     vec4 tex_color = texture(sampler2D(tex, smp), uv);
-   
+
     if (use_lighting ==  1.0) {
         float diffuse = max(dot(normalize(v_normal), normalize(light_dir)), 0.0);
         frag_color = mix(color, color * tex_color, use_texture) * (diffuse + ambient_intensity) * vec4(light_color, 1.0);
