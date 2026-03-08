@@ -19,7 +19,7 @@ out vec3 v_normal;
 void main() {
     gl_Position = mvp * position;
     color = color0;
-    uv = texcoord0;
+    uv = texcoord0 * 10;
     v_normal = normal;
 }
 @end
@@ -99,7 +99,7 @@ void main() {
     vec4 pos = position;
 
     // UV from normalized x,z coordinates (position on grid from -1 to 1)
-    uv = xz_n;
+    uv = xz_n * 10;
 
     // Height calculation randomly with noise
     if (eq(xz_n.x, -1.0) || eq(xz_n.y, -1.0) || eq(xz_n.x, 1.0) || eq(xz_n.y, 1.0)) {

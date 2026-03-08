@@ -4,7 +4,7 @@ const util = @import("lib/util.zig");
 const math = @import("lib/math.zig");
 const Mat4 = math.Mat4;
 const Vec3 = math.Vec3;
-const shd = @import("shaders/terrain.glsl.zig");
+const shd = @import("shaders/gltf.glsl.zig");
 const sokol = @import("sokol");
 const ig = @import("cimgui");
 const slog = sokol.log;
@@ -330,13 +330,13 @@ export fn init(userdata: ?*anyopaque) void {
     state.pipeline = sg.makePipeline(
         .{
             .label = "CPU Noise and Normal Calculation Pipeline",
-            .shader = sg.makeShader(shd.terrainShaderDesc(sg.queryBackend())),
+            .shader = sg.makeShader(shd.gltfShaderDesc(sg.queryBackend())),
             .layout = init: {
                 var l = sg.VertexLayoutState{};
-                l.attrs[shd.ATTR_terrain_position].format = .FLOAT3;
-                l.attrs[shd.ATTR_terrain_color0].format = .UBYTE4N;
-                l.attrs[shd.ATTR_terrain_texcoord0].format = .SHORT2N;
-                l.attrs[shd.ATTR_terrain_normal].format = .FLOAT3;
+                l.attrs[shd.ATTR_gltf_position].format = .FLOAT3;
+                l.attrs[shd.ATTR_gltf_color0].format = .UBYTE4N;
+                l.attrs[shd.ATTR_gltf_texcoord0].format = .SHORT2N;
+                l.attrs[shd.ATTR_gltf_normal].format = .FLOAT3;
                 break :init l;
             },
             .index_type = .UINT16,
