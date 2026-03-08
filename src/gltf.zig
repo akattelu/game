@@ -42,6 +42,8 @@ const Vertex = extern struct {
 const Primitive = struct {
     binding: sg.Bindings = .{},
     object_count: u32 = 0,
+    y_max: f32 = 0.0,
+    y_min: f32 = 0.0,
 };
 
 pub const GltfViewer = struct {
@@ -92,6 +94,9 @@ pub const GltfViewer = struct {
             var indices: std.ArrayList(u16) = .empty;
             var img_pixels: []const u8 = "";
             var obj_count: u32 = 0;
+            var y_max: f32 = 0;
+            var y_min: f32 = 0;
+
             for (primitive.attributes) |attr| {
                 switch (attr) {
                     .position => |pos| {
@@ -107,6 +112,8 @@ pub const GltfViewer = struct {
                                 .u = 0,
                                 .v = 0,
                             });
+                            if (v[1] > y_max) y_max = v[1];
+                            if (v[1] < y_min) y_min = v[1];
                         }
                     },
                     .normal => |normal| {
@@ -118,13 +125,13 @@ pub const GltfViewer = struct {
                         }
                     },
                     .color => |color| {
-                        _ = color;
-                        // const accessor = gltf.data.accessors[color];
-                        // var it = accessor.iterator(u32, &gltf, gltf.glb_binary.?);
-                        // var i: u32 = 0;
-                        // while (it.next()) |n| : (i += 1) {
-                        //     vertices.items[i].color = n[0];
-                        // }
+                        // _ = color;
+                        const accessor = gltf.data.accessors[color];
+                        var it = accessor.iterator(u32, &gltf, gltf.glb_binary.?);
+                        var i: u32 = 0;
+                        while (it.next()) |n| : (i += 1) {
+                            vertices.items[i].color = n[0];
+                        }
                     },
                     .texcoord => |texcoord| {
                         const accessor = gltf.data.accessors[texcoord];
@@ -220,23 +227,35 @@ pub const GltfViewer = struct {
             }
 
             bindings.samplers[shd.SMP_smp] = sg.makeSampler(.{});
-            try primitives.append(alloc, .{ .binding = bindings, .object_count = obj_count });
+            try primitives.append(alloc, .{
+                .binding = bindings,
+                .object_count = obj_count,
+                .y_max = y_max,
+                .y_min = y_min,
+            });
         }
 
         gltf.debugPrint();
         self.primitives = try primitives.toOwnedSlice(alloc);
     }
 
-    fn vsUniforms(self: *GltfViewer) shd.VsParams {
+    fn vsUniforms(self: *GltfViewer, prim: *const Primitive) shd.VsParams {
         const r = self.camera_radius;
         const phi = self.camera_phi;
         const theta = self.camera_theta;
+        const center_y = (prim.y_min + prim.y_max) / 2.0;
+        const model = Mat4.translate(Vec3.new(0, -center_y, 0));
         return .{
-            .mvp = Mat4.mvp(Vec3.new(
-                r * @sin(phi) * @cos(theta),
-                r * @cos(phi),
-                r * @sin(phi) * @sin(theta),
-            ), sapp.widthf(), sapp.heightf()),
+            .mvp = Mat4.mvp(
+                Vec3.new(
+                    r * @sin(phi) * @cos(theta),
+                    r * @cos(phi),
+                    r * @sin(phi) * @sin(theta),
+                ),
+                sapp.widthf(),
+                sapp.heightf(),
+                model,
+            ),
         };
     }
 
@@ -370,13 +389,13 @@ export fn frame(userdata: ?*anyopaque) void {
     if (state.selected_index) |idx| {
         const prim = state.primitives.?[idx];
         sg.applyBindings(prim.binding);
-        sg.applyUniforms(shd.UB_vs_params, sg.asRange(&state.vsUniforms()));
+        sg.applyUniforms(shd.UB_vs_params, sg.asRange(&state.vsUniforms(&prim)));
         sg.applyUniforms(shd.UB_fs_params, sg.asRange(&state.fsUniforms()));
         sg.draw(0, prim.object_count, 1);
     } else {
         for (state.primitives.?) |prim| {
             sg.applyBindings(prim.binding);
-            sg.applyUniforms(shd.UB_vs_params, sg.asRange(&state.vsUniforms()));
+            sg.applyUniforms(shd.UB_vs_params, sg.asRange(&state.vsUniforms(&prim)));
             sg.applyUniforms(shd.UB_fs_params, sg.asRange(&state.fsUniforms()));
             sg.draw(0, prim.object_count, 1);
         }
