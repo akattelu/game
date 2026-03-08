@@ -202,6 +202,7 @@ pub const GltfViewer = struct {
                 // Material processing
                 if (primitive.material) |mat_idx| {
                     const material = gltf.data.materials[mat_idx];
+                    const material_name = material.name orelse "(unknown-material-name)";
                     metallic_factor = material.metallic_roughness.metallic_factor;
                     roughness_factor = material.metallic_roughness.roughness_factor;
                     // Load base color texture image
@@ -221,7 +222,7 @@ pub const GltfViewer = struct {
                         has_normal_map_data = false;
                     }
                     bindings.views[shd.VIEW_normal_tex] = sg.makeView(.{
-                        .label = (try sprint(alloc, "{s} Normal Map Texture for primitive {d}", .{ material.name.?, prim_idx })).ptr,
+                        .label = (try sprint(alloc, "{s} Normal Map Texture for primitive {d}", .{ material_name, prim_idx })).ptr,
                         .texture = .{ .image = normal_map_texture_image },
                     });
 
@@ -240,7 +241,7 @@ pub const GltfViewer = struct {
                         } });
                     }
                     bindings.views[shd.VIEW_tex] = sg.makeView(.{
-                        .label = (try sprint(alloc, "{s} Metallic Roughness Base Texture for primitive {d}", .{ material.name.?, prim_idx })).ptr,
+                        .label = (try sprint(alloc, "{s} Metallic Roughness Base Texture for primitive {d}", .{ material_name, prim_idx })).ptr,
                         .texture = .{ .image = base_color_texture_image },
                     });
 
@@ -258,7 +259,7 @@ pub const GltfViewer = struct {
                         } });
                     }
                     bindings.views[shd.VIEW_mr_tex] = sg.makeView(.{
-                        .label = (try sprint(alloc, "{s} Metallic Roughness Texture for primitive {d}", .{ material.name.?, prim_idx })).ptr,
+                        .label = (try sprint(alloc, "{s} Metallic Roughness Texture for primitive {d}", .{ material_name, prim_idx })).ptr,
                         .texture = .{ .image = metallic_roughness_texture_image },
                     });
                 }
@@ -293,10 +294,10 @@ pub const GltfViewer = struct {
         const r = self.camera_radius;
         const phi = self.camera_phi;
         const theta = self.camera_theta;
-        const center_y = (prim.y_min + prim.y_max) / 2.0;
-        const model = Mat4.translate(Vec3.new(0, -center_y, 0));
+        _ = prim;
+        const model = Mat4.identity();
         return .{
-            .mvp = Mat4.mvp(
+            .view_projection = Mat4.vp(
                 Vec3.new(
                     r * @sin(phi) * @cos(theta),
                     r * @cos(phi),
@@ -304,8 +305,8 @@ pub const GltfViewer = struct {
                 ),
                 sapp.widthf(),
                 sapp.heightf(),
-                model,
             ),
+            .model = model,
         };
     }
 
@@ -345,6 +346,8 @@ pub const GltfViewer = struct {
                             _ = ig.igCheckbox("Apply Normal Map?", &self.apply_normal_map);
                         }
                         if (prim.has_metallic_roughness_texture) {
+                            _ = ig.igText("Metallic Factor: %.2f", prim.metallic_factor);
+                            _ = ig.igText("Roughness Factor: %.2f", prim.roughness_factor);
                             _ = ig.igCheckbox("Apply Metallic Roughness Texture?", &self.apply_metallic_roughness_texture);
                         }
                     }

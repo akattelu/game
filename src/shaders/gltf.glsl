@@ -4,7 +4,8 @@
 
 @vs vs
 layout(binding = 0) uniform vs_params {
-    mat4 mvp;
+    mat4 model;
+    mat4 view_projection;
 };
 
 in vec4 position;
@@ -20,16 +21,20 @@ out vec4 v_tangent;
 out vec3 v_world_pos;
 
 void main() {
-    gl_Position = mvp * position;
+    vec4 world = model * position;
+    gl_Position = view_projection * world;
+    v_world_pos = world.xyz;
     color = color0;
     uv = texcoord0;
-    v_normal = normal;
-    v_tangent = tangent;
+    v_normal = mat3(model) * normal;
+    v_tangent = vec4(mat3(model) * tangent.xyz, tangent.w);
+
 }
 @end
 
 
 @fs fs
+#define PI 3.14159265359
 layout(binding=0) uniform texture2D tex;
 layout(binding=0) uniform sampler smp;
 
@@ -115,7 +120,7 @@ void main() {
         vec3 kD = (1.0 - F) * (1.0 - metallic);
         vec3 diffuse = kD * base.rgb / 3.14159;
 
-        frag_color = vec4((diffuse + specular) * NdotL * light_color + base.rgb * ambient_intensity, base.a);
+        frag_color = vec4((diffuse + specular) * NdotL * light_color * PI + base.rgb * ambient_intensity, base.a);
     } else {
         if (use_lambert_lighting ==  1.0) {
             float diffuse = max(dot(N, normalize(light_dir)), 0.0);
