@@ -46,7 +46,10 @@ const Primitive = struct {
     object_count: u32 = 0,
     y_max: f32 = 0.0,
     y_min: f32 = 0.0,
+    metallic_factor: f32 = 1.0,
+    roughness_factor: f32 = 1.0,
     has_normal_map_data: bool = false,
+    has_metallic_roughness_texture: bool = false,
 };
 
 const Mesh = struct {
@@ -76,7 +79,8 @@ pub const GltfViewer = struct {
 
     // Lighting
     apply_texture: bool = true,
-    apply_normal_map: bool = true,
+    apply_normal_map: bool = false,
+    apply_metallic_roughness_texture: bool = false,
     apply_lighting: bool = true,
     ambient_intensity: f32 = 0.2,
     normal_cell_spacing: f32 = 2.0,
@@ -106,6 +110,9 @@ pub const GltfViewer = struct {
                 var y_max: f32 = 0;
                 var y_min: f32 = 0;
                 var has_normal_map_data: bool = false;
+                var has_metallic_roughness_texture: bool = false;
+                var metallic_factor: f32 = 0.0;
+                var roughness_factor: f32 = 0.0;
 
                 for (primitive.attributes) |attr| {
                     switch (attr) {
@@ -195,6 +202,8 @@ pub const GltfViewer = struct {
                 // Material processing
                 if (primitive.material) |mat_idx| {
                     const material = gltf.data.materials[mat_idx];
+                    metallic_factor = material.metallic_roughness.metallic_factor;
+                    roughness_factor = material.metallic_roughness.roughness_factor;
                     // Load base color texture image
                     var normal_map_texture_image: sg.Image = .{};
                     if (material.normal_texture) |tex| {
@@ -234,16 +243,39 @@ pub const GltfViewer = struct {
                         .label = (try sprint(alloc, "{s} Metallic Roughness Base Texture for primitive {d}", .{ material.name.?, prim_idx })).ptr,
                         .texture = .{ .image = base_color_texture_image },
                     });
+
+                    // Load metallic roughness texture image
+                    var metallic_roughness_texture_image: sg.Image = .{};
+                    if (material.metallic_roughness.metallic_roughness_texture) |tex| {
+                        const encoded_bytes = gltf.data.images[gltf.data.textures[tex.index].source.?].data.?;
+                        metallic_roughness_texture_image = try makeSgImage(alloc, encoded_bytes);
+                        has_metallic_roughness_texture = true;
+                    } else {
+                        metallic_roughness_texture_image = sg.makeImage(.{ .label = "Dummy mr texture image", .width = 1, .height = 1, .data = init: {
+                            var data = sg.ImageData{};
+                            data.mip_levels[0] = sg.asRange(&[1]u32{0xFFFFFFFF});
+                            break :init data;
+                        } });
+                    }
+                    bindings.views[shd.VIEW_mr_tex] = sg.makeView(.{
+                        .label = (try sprint(alloc, "{s} Metallic Roughness Texture for primitive {d}", .{ material.name.?, prim_idx })).ptr,
+                        .texture = .{ .image = metallic_roughness_texture_image },
+                    });
                 }
 
                 bindings.samplers[shd.SMP_smp] = sg.makeSampler(.{});
                 bindings.samplers[shd.SMP_normal_smp] = sg.makeSampler(.{});
+                bindings.samplers[shd.SMP_mr_smp] = sg.makeSampler(.{});
+
                 try primitives.append(alloc, .{
                     .binding = bindings,
                     .object_count = obj_count,
                     .y_max = y_max,
                     .y_min = y_min,
                     .has_normal_map_data = has_normal_map_data,
+                    .has_metallic_roughness_texture = has_metallic_roughness_texture,
+                    .metallic_factor = metallic_factor,
+                    .roughness_factor = roughness_factor,
                 });
             }
 
@@ -286,9 +318,13 @@ pub const GltfViewer = struct {
             ),
             .light_color = self.light_color,
             .use_texture = if (self.apply_texture) 1.0 else 0.0,
-            .use_lighting = if (self.apply_lighting) 1.0 else 0.0,
+            .use_lambert_lighting = if (self.apply_lighting) 1.0 else 0.0,
             .use_normal_map = if (self.apply_normal_map and prim.has_normal_map_data) 1.0 else 0.0,
             .ambient_intensity = self.ambient_intensity,
+            .metallic_factor = prim.metallic_factor,
+            .roughness_factor = prim.roughness_factor,
+            .use_metallic_roughness_texture = if (self.apply_metallic_roughness_texture and prim.has_metallic_roughness_texture) 1.0 else 0.0,
+            .camera_eye = self.eye,
         };
     }
 
@@ -307,6 +343,9 @@ pub const GltfViewer = struct {
                         if (prim.has_normal_map_data) {
                             // Will run once per primitive but its fine
                             _ = ig.igCheckbox("Apply Normal Map?", &self.apply_normal_map);
+                        }
+                        if (prim.has_metallic_roughness_texture) {
+                            _ = ig.igCheckbox("Apply Metallic Roughness Texture?", &self.apply_metallic_roughness_texture);
                         }
                     }
 
