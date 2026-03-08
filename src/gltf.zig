@@ -55,9 +55,9 @@ pub const GltfViewer = struct {
 
     // Camera
     eye: Vec3 = .{ .x = 110.0, .y = 125.0, .z = 30.0 },
-    camera_theta: f32 = std.math.pi / 8.0,
-    camera_phi: f32 = std.math.pi / 8.0,
-    camera_radius: f32 = 175.0,
+    camera_theta: f32 = 1.276,
+    camera_phi: f32 = 0.785,
+    camera_radius: f32 = 50.0,
     mouse_down: bool = false,
 
     // Sokol bindings
@@ -66,7 +66,7 @@ pub const GltfViewer = struct {
 
     // Lighting
     apply_texture: bool = true,
-    apply_lighting: bool = false,
+    apply_lighting: bool = true,
     ambient_intensity: f32 = 0.2,
     normal_cell_spacing: f32 = 2.0,
     azimuth_angle: f32 = 0.0,
@@ -176,11 +176,7 @@ pub const GltfViewer = struct {
                             const w: i32 = @intCast(img.width);
                             const h: i32 = @intCast(img.height);
                             try img.convert(alloc, .rgba32);
-                            // native format: .rgb24
                             img_pixels = img.rawBytes();
-                            std.debug.print("native format: {}\n", .{img.pixelFormat()});
-                            const raw = img.rawBytes();
-                            std.debug.print("first pixel RGBA: {d} {d} {d} {d}\n", .{ raw[0], raw[1], raw[2], raw[3] });
 
                             bindings.views[shd.VIEW_tex] = sg.makeView(.{
                                 .label = (try sprint(alloc, "{s} Metallic Roughness Base Texture for primitive {d}", .{ material.name.?, prim_idx })).ptr,

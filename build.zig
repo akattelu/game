@@ -179,22 +179,55 @@ fn buildWeb(b: *std.Build, root_mod: *std.Build.Module, deps: Dependencies, vari
     return &link_step.step;
 }
 
-fn compileShaders(b: *std.Build, dep_shdc: *std.Build.Dependency) !*std.Build.Step {
-    const shdc_step = try sokol.shdc.createSourceFile(b, .{
-        .shdc_dep = dep_shdc,
-        .input = "src/shaders/terrain.glsl",
-        .output = "src/shaders/terrain.glsl.zig",
-        .slang = .{
-            .metal_macos = true,
-            .spirv_vk = true,
-            .wgsl = true,
-            .glsl430 = true,
-            .glsl300es = true,
-            .hlsl5 = true,
-        },
-    });
+fn compileShaders(b: *std.Build, variant: BuildVariant, dep_shdc: *std.Build.Dependency) !*std.Build.Step {
+    // This should actually happen only once right now for all shaders, but since dep_shdc requires
+    // dependencies to be loaded and a target to be specified first, it's setup like this.
+    const target = variant.target;
+    const shader_inputs: [2][]const u8 = .{
+        "src/shaders/terrain.glsl",
+        "src/shaders/gltf.glsl",
+    };
 
-    return shdc_step;
+    const step_name: []const u8 = switch (target) {
+        .webgl => try sprint(b.allocator, "compile-shaders-{s}-webgl", .{variant.root_app_name}),
+        .webgpu => try sprint(b.allocator, "compile-shaders-{s}-webgpu", .{variant.root_app_name}),
+        .native => |query| blk: {
+            const resolved = b.resolveTargetQuery(query);
+            const triple = try resolved.result.zigTriple(b.allocator);
+            break :blk try sprint(b.allocator, "compile-shaders-{s}-{s}", .{ variant.root_app_name, triple });
+        },
+    };
+    const step_desc: []const u8 = switch (target) {
+        .webgl => "Compile shaders for WebGL",
+        .webgpu => "Compile shaders for WebGPU",
+        .native => |query| blk: {
+            const resolved = b.resolveTargetQuery(query);
+            const triple = try resolved.result.zigTriple(b.allocator);
+            break :blk try sprint(b.allocator, "Compile shaders for {s}", .{triple});
+        },
+    };
+
+    const step = b.step(step_name, step_desc);
+    for (shader_inputs) |input| {
+        const output = try sprint(b.allocator, "{s}.zig", .{input});
+        const shdc_step = try sokol.shdc.createSourceFile(b, .{
+            .shdc_dep = dep_shdc,
+            .input = input,
+            .output = output,
+            .slang = .{
+                .metal_macos = true,
+                .spirv_vk = true,
+                .wgsl = true,
+                .glsl430 = true,
+                .glsl300es = true,
+                .hlsl5 = true,
+            },
+        });
+
+        step.dependOn(shdc_step);
+    }
+
+    return step;
 }
 
 fn fatal(comptime format: []const u8, args: anytype) noreturn {
@@ -219,13 +252,9 @@ fn buildFor(b: *std.Build, variant: BuildVariant) !void {
                     .{ .name = "zigimg", .module = deps.dep_zigimg.module("zigimg") },
                 },
             });
-            const shaders = try compileShaders(b, deps.dep_shdc);
+            const shaders = try compileShaders(b, variant, deps.dep_shdc);
             const name = try sprint(b.allocator, "{s}_{s}", .{ variant.root_app_name, @tagName(t.result.os.tag) });
-            const exe = b.addExecutable(.{
-                .name = name,
-                .root_module = root_mod,
-            });
-
+            const exe = b.addExecutable(.{ .name = name, .root_module = root_mod });
             const exe_install = b.addInstallArtifact(exe, .{});
 
             // Setup run cmd
@@ -260,7 +289,7 @@ fn buildFor(b: *std.Build, variant: BuildVariant) !void {
                 .optimize = variant.optimize,
                 .mode = if (variant.target == .webgpu) .webgpu else .webgl,
             });
-            const shaders = try compileShaders(b, deps.dep_shdc);
+            const shaders = try compileShaders(b, variant, deps.dep_shdc);
             const root_mod = b.createModule(.{
                 .root_source_file = b.path(root_file_name),
                 .target = b.resolveTargetQuery(.{ .os_tag = .emscripten, .cpu_arch = .wasm32 }),
