@@ -76,7 +76,7 @@ const TerrainState = struct {
                 r * @sin(phi) * @cos(theta),
                 r * @cos(phi),
                 r * @sin(phi) * @sin(theta),
-            ), sapp.widthf(), sapp.heightf()),
+            ), sapp.widthf(), sapp.heightf(), Mat4.identity()),
             .frequency = self.frequency,
             .amplitude = self.amplitude,
             .lacunarity = self.lacunarity,
