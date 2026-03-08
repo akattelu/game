@@ -46,11 +46,16 @@ const Primitive = struct {
     y_min: f32 = 0.0,
 };
 
+const Mesh = struct {
+    name: ?[]const u8,
+    primitives: []Primitive,
+};
+
 pub const GltfViewer = struct {
     // GLTF Core
-    primitives: ?[]Primitive = null,
+    meshes: ?[]Mesh = null,
     gltf: ?Gltf = null,
-    selected_index: ?usize = null,
+    selected_mesh_index: usize = 0,
 
     // Other UI
     imgui_window_open: bool = true,
@@ -86,157 +91,165 @@ pub const GltfViewer = struct {
     pub fn initPrimitives(self: *GltfViewer, alloc: std.mem.Allocator) !void {
         var primitives: std.ArrayList(Primitive) = .empty;
         const gltf = self.gltf.?;
-        const mesh = gltf.data.meshes[0];
+        var meshes: std.ArrayList(Mesh) = .empty;
 
-        for (mesh.primitives, 0..) |primitive, prim_idx| {
-            var bindings: sg.Bindings = .{};
-            var vertices: std.ArrayList(Vertex) = .empty;
-            var indices: std.ArrayList(u16) = .empty;
-            var img_pixels: []const u8 = "";
-            var obj_count: u32 = 0;
-            var y_max: f32 = 0;
-            var y_min: f32 = 0;
+        for (gltf.data.meshes) |mesh| {
+            for (mesh.primitives, 0..) |primitive, prim_idx| {
+                var bindings: sg.Bindings = .{};
+                var vertices: std.ArrayList(Vertex) = .empty;
+                var indices: std.ArrayList(u16) = .empty;
+                var img_pixels: []const u8 = "";
+                var obj_count: u32 = 0;
+                var y_max: f32 = 0;
+                var y_min: f32 = 0;
 
-            for (primitive.attributes) |attr| {
-                switch (attr) {
-                    .position => |pos| {
-                        const accessor = gltf.data.accessors[pos];
-                        var it = accessor.iterator(f32, &gltf, gltf.glb_binary.?);
-                        while (it.next()) |v| {
-                            try vertices.append(alloc, .{
-                                .x = v[0],
-                                .y = v[1],
-                                .z = v[2],
-                                .normal = Vec3.new(1.0, 0.0, 0.0),
-                                .color = util.rgbaToU32(255, 255, 255, 255),
-                                .u = 0,
-                                .v = 0,
-                            });
-                            if (v[1] > y_max) y_max = v[1];
-                            if (v[1] < y_min) y_min = v[1];
-                        }
-                    },
-                    .normal => |normal| {
-                        const accessor = gltf.data.accessors[normal];
-                        var it = accessor.iterator(f32, &gltf, gltf.glb_binary.?);
-                        var i: u32 = 0;
-                        while (it.next()) |n| : (i += 1) {
-                            vertices.items[i].normal = Vec3.new(n[0], n[1], n[2]);
-                        }
-                    },
-                    .color => |color| {
-                        // _ = color;
-                        const accessor = gltf.data.accessors[color];
-                        var it = accessor.iterator(u32, &gltf, gltf.glb_binary.?);
-                        var i: u32 = 0;
-                        while (it.next()) |n| : (i += 1) {
-                            vertices.items[i].color = n[0];
-                        }
-                    },
-                    .texcoord => |texcoord| {
-                        const accessor = gltf.data.accessors[texcoord];
-                        var it = accessor.iterator(f32, &gltf, gltf.glb_binary.?);
-                        var i: u32 = 0;
-                        while (it.next()) |uv| : (i += 1) {
-                            vertices.items[i].u = @intFromFloat(uv[0] * 32767.0);
-                            vertices.items[i].v = @intFromFloat(uv[1] * 32767.0);
-                        }
-                    },
-                    else => {},
-                }
-            }
-            // Load vertex buffer with all info from parsing vertex attributes
-            bindings.vertex_buffers[0] = sg.makeBuffer(.{
-                .label = "Primitive Vertex Buffer",
-                .usage = .{ .vertex_buffer = true },
-                .data = sg.asRange(try vertices.toOwnedSlice(alloc)),
-            });
-
-            // Read and load indices
-            if (primitive.indices) |prim_indices| {
-                const accessor = gltf.data.accessors[prim_indices];
-                if (accessor.component_type == .unsigned_short) {
-                    var it = accessor.iterator(u16, &gltf, gltf.glb_binary.?);
-                    while (it.next()) |i| {
-                        try indices.append(alloc, i[0]);
-                    }
-                }
-
-                const owned_indices = try indices.toOwnedSlice(alloc);
-                bindings.index_buffer = sg.makeBuffer(.{
-                    .label = "Primitive Index Buffer",
-                    .usage = .{ .index_buffer = true },
-                    .data = sg.asRange(owned_indices),
-                });
-                obj_count = @intCast(owned_indices.len);
-            }
-
-            // Material processing
-            if (primitive.material) |mat_idx| {
-                const material = gltf.data.materials[mat_idx];
-                if (material.metallic_roughness.base_color_texture) |tex_info| {
-                    const texture = gltf.data.textures[tex_info.index];
-                    if (texture.source) |img_idx| {
-                        const image = gltf.data.images[img_idx];
-                        if (image.data) |encoded_bytes| {
-                            var img = try zigimg.Image.fromMemory(alloc, encoded_bytes);
-                            const w: i32 = @intCast(img.width);
-                            const h: i32 = @intCast(img.height);
-                            try img.convert(alloc, .rgba32);
-                            img_pixels = img.rawBytes();
-
-                            bindings.views[shd.VIEW_tex] = sg.makeView(.{
-                                .label = (try sprint(alloc, "{s} Metallic Roughness Base Texture for primitive {d}", .{ material.name.?, prim_idx })).ptr,
-                                .texture = .{
-                                    .image = sg.makeImage(.{
-                                        .width = w,
-                                        .height = h,
-                                        .pixel_format = .RGBA8,
-                                        .data = init: {
-                                            var data = sg.ImageData{};
-                                            data.mip_levels[0] = sg.asRange(img_pixels);
-                                            break :init data;
-                                        },
-                                    }),
-                                },
-                            });
-                        }
-                    }
-                } else {
-                    // Load base texture, even if it won't be applied?
-                    bindings.views[shd.VIEW_tex] = sg.makeView(.{
-                        .label = (try sprint(alloc, "{s} Empty Texture for primitive {d}", .{ material.name.?, prim_idx })).ptr,
-                        .texture = .{
-                            .image = sg.makeImage(.{
-                                .width = 4,
-                                .height = 4,
-                                .data = init: {
-                                    var data = sg.ImageData{};
-                                    data.mip_levels[0] = sg.asRange(&[4 * 4]u32{
-                                        0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
-                                        0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
-                                        0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
-                                        0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
-                                    });
-                                    break :init data;
-                                },
-                            }),
+                for (primitive.attributes) |attr| {
+                    switch (attr) {
+                        .position => |pos| {
+                            const accessor = gltf.data.accessors[pos];
+                            var it = accessor.iterator(f32, &gltf, gltf.glb_binary.?);
+                            while (it.next()) |v| {
+                                try vertices.append(alloc, .{
+                                    .x = v[0],
+                                    .y = v[1],
+                                    .z = v[2],
+                                    .normal = Vec3.new(1.0, 0.0, 0.0),
+                                    .color = util.rgbaToU32(255, 255, 255, 255),
+                                    .u = 0,
+                                    .v = 0,
+                                });
+                                if (v[1] > y_max) y_max = v[1];
+                                if (v[1] < y_min) y_min = v[1];
+                            }
                         },
-                    });
+                        .normal => |normal| {
+                            const accessor = gltf.data.accessors[normal];
+                            var it = accessor.iterator(f32, &gltf, gltf.glb_binary.?);
+                            var i: u32 = 0;
+                            while (it.next()) |n| : (i += 1) {
+                                vertices.items[i].normal = Vec3.new(n[0], n[1], n[2]);
+                            }
+                        },
+                        .color => |color| {
+                            // _ = color;
+                            const accessor = gltf.data.accessors[color];
+                            var it = accessor.iterator(u32, &gltf, gltf.glb_binary.?);
+                            var i: u32 = 0;
+                            while (it.next()) |n| : (i += 1) {
+                                vertices.items[i].color = n[0];
+                            }
+                        },
+                        .texcoord => |texcoord| {
+                            const accessor = gltf.data.accessors[texcoord];
+                            var it = accessor.iterator(f32, &gltf, gltf.glb_binary.?);
+                            var i: u32 = 0;
+                            while (it.next()) |uv| : (i += 1) {
+                                vertices.items[i].u = @intFromFloat(uv[0] * 32767.0);
+                                vertices.items[i].v = @intFromFloat(uv[1] * 32767.0);
+                            }
+                        },
+                        else => {},
+                    }
                 }
+                // Load vertex buffer with all info from parsing vertex attributes
+                bindings.vertex_buffers[0] = sg.makeBuffer(.{
+                    .label = "Primitive Vertex Buffer",
+                    .usage = .{ .vertex_buffer = true },
+                    .data = sg.asRange(try vertices.toOwnedSlice(alloc)),
+                });
+
+                // Read and load indices
+                if (primitive.indices) |prim_indices| {
+                    const accessor = gltf.data.accessors[prim_indices];
+                    if (accessor.component_type == .unsigned_short) {
+                        var it = accessor.iterator(u16, &gltf, gltf.glb_binary.?);
+                        while (it.next()) |i| {
+                            try indices.append(alloc, i[0]);
+                        }
+                    }
+
+                    const owned_indices = try indices.toOwnedSlice(alloc);
+                    bindings.index_buffer = sg.makeBuffer(.{
+                        .label = "Primitive Index Buffer",
+                        .usage = .{ .index_buffer = true },
+                        .data = sg.asRange(owned_indices),
+                    });
+                    obj_count = @intCast(owned_indices.len);
+                }
+
+                // Material processing
+                if (primitive.material) |mat_idx| {
+                    const material = gltf.data.materials[mat_idx];
+                    if (material.metallic_roughness.base_color_texture) |tex_info| {
+                        const texture = gltf.data.textures[tex_info.index];
+                        if (texture.source) |img_idx| {
+                            const image = gltf.data.images[img_idx];
+                            if (image.data) |encoded_bytes| {
+                                var img = try zigimg.Image.fromMemory(alloc, encoded_bytes);
+                                const w: i32 = @intCast(img.width);
+                                const h: i32 = @intCast(img.height);
+                                try img.convert(alloc, .rgba32);
+                                img_pixels = img.rawBytes();
+
+                                bindings.views[shd.VIEW_tex] = sg.makeView(.{
+                                    .label = (try sprint(alloc, "{s} Metallic Roughness Base Texture for primitive {d}", .{ material.name.?, prim_idx })).ptr,
+                                    .texture = .{
+                                        .image = sg.makeImage(.{
+                                            .width = w,
+                                            .height = h,
+                                            .pixel_format = .RGBA8,
+                                            .data = init: {
+                                                var data = sg.ImageData{};
+                                                data.mip_levels[0] = sg.asRange(img_pixels);
+                                                break :init data;
+                                            },
+                                        }),
+                                    },
+                                });
+                            }
+                        }
+                    } else { // No metallic roughness base color texture
+                        // Load base texture, even if it won't be applied?
+                        bindings.views[shd.VIEW_tex] = sg.makeView(.{
+                            .label = (try sprint(alloc, "{s} Empty Texture for primitive {d}", .{ material.name.?, prim_idx })).ptr,
+                            .texture = .{
+                                .image = sg.makeImage(.{
+                                    .label = (try sprint(alloc, "{s} Empty Texture for primitive {d}", .{ material.name.?, prim_idx })).ptr,
+                                    .width = 4,
+                                    .height = 4,
+                                    .data = init: {
+                                        var data = sg.ImageData{};
+                                        data.mip_levels[0] = sg.asRange(&[4 * 4]u32{
+                                            0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
+                                            0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
+                                            0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
+                                            0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
+                                        });
+                                        break :init data;
+                                    },
+                                }),
+                            },
+                        });
+                    }
+                }
+
+                bindings.samplers[shd.SMP_smp] = sg.makeSampler(.{});
+                try primitives.append(alloc, .{
+                    .binding = bindings,
+                    .object_count = obj_count,
+                    .y_max = y_max,
+                    .y_min = y_min,
+                });
             }
 
-            bindings.samplers[shd.SMP_smp] = sg.makeSampler(.{});
-            try primitives.append(alloc, .{
-                .binding = bindings,
-                .object_count = obj_count,
-                .y_max = y_max,
-                .y_min = y_min,
+            gltf.debugPrint();
+            const mesh_primitives = try primitives.toOwnedSlice(alloc);
+            try meshes.append(alloc, .{
+                .name = mesh.name,
+                .primitives = mesh_primitives,
             });
         }
-
-        gltf.debugPrint();
-        self.primitives = try primitives.toOwnedSlice(alloc);
+        self.meshes = try meshes.toOwnedSlice(alloc);
     }
 
     fn vsUniforms(self: *GltfViewer, prim: *const Primitive) shd.VsParams {
@@ -281,23 +294,16 @@ pub const GltfViewer = struct {
         if (ig.igBegin("GLTF/GLB Viewer", &self.imgui_window_open, ig.ImGuiWindowFlags_AlwaysAutoResize)) {
             if (ig.igBeginTabBar("Settings", 0)) {
                 if (ig.igBeginTabItem("General", null, 0)) {
-                    _ = ig.igText("Total number of primitives in file: %d", self.primitives.?.len);
-                    _ = ig.igText("Primitive Count: %d", self.primitives.?.len);
-                    if (self.selected_index) |idx| {
-                        _ = ig.igText("Now viewing primitive number: %d", idx);
-                    } else {
-                        _ = ig.igText("Now viewing all primitives drawn together");
-                    }
-                    if (ig.igArrowButton("Primitive Right", ig.ImGuiDir_Right)) {
-                        if (self.selected_index) |idx| {
-                            if (idx + 1 >= self.primitives.?.len) {
-                                self.selected_index = null;
-                            } else {
-                                self.selected_index.? += 1;
-                            }
-                        } else {
-                            self.selected_index = 0;
+                    _ = ig.igText("Mesh Count: %d", self.meshes.?.len);
+                    _ = ig.igText("Now viewing mesh number: %d", self.selected_mesh_index);
+
+                    if (ig.igArrowButton("Previous Mesh", ig.ImGuiDir_Left)) {
+                        if (self.selected_mesh_index != 0) {
+                            self.selected_mesh_index = self.selected_mesh_index - 1;
                         }
+                    }
+                    if (ig.igArrowButton("Next Mesh", ig.ImGuiDir_Right)) {
+                        self.selected_mesh_index = @min(self.selected_mesh_index + 1, self.meshes.?.len - 1);
                     }
                     ig.igEndTabItem();
                 }
@@ -386,19 +392,12 @@ export fn frame(userdata: ?*anyopaque) void {
 
     // Pipeline
     sg.applyPipeline(state.pipeline);
-    if (state.selected_index) |idx| {
-        const prim = state.primitives.?[idx];
+    const mesh = state.meshes.?[state.selected_mesh_index];
+    for (mesh.primitives) |prim| {
         sg.applyBindings(prim.binding);
         sg.applyUniforms(shd.UB_vs_params, sg.asRange(&state.vsUniforms(&prim)));
         sg.applyUniforms(shd.UB_fs_params, sg.asRange(&state.fsUniforms()));
         sg.draw(0, prim.object_count, 1);
-    } else {
-        for (state.primitives.?) |prim| {
-            sg.applyBindings(prim.binding);
-            sg.applyUniforms(shd.UB_vs_params, sg.asRange(&state.vsUniforms(&prim)));
-            sg.applyUniforms(shd.UB_fs_params, sg.asRange(&state.fsUniforms()));
-            sg.draw(0, prim.object_count, 1);
-        }
     }
 
     sdtx.draw();
