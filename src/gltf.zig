@@ -155,7 +155,7 @@ const Primitive = struct {
             var normal_map_texture_image: sg.Image = .{};
             if (material.normal_texture) |tex| {
                 const encoded_bytes = gltf.data.images[gltf.data.textures[tex.index].source.?].data.?;
-                normal_map_texture_image = try makeSgImage(alloc, encoded_bytes);
+                normal_map_texture_image = try makeSgImage(alloc, (try sprint(alloc, "{s} Normal Map Texture", .{material_name})), encoded_bytes);
             } else {
                 normal_map_texture_image = sg.makeImage(.{ .label = "Dummy base normal map texture image", .width = 1, .height = 1, .data = init: {
                     var data = sg.ImageData{};
@@ -175,7 +175,7 @@ const Primitive = struct {
             var base_color_texture_image: sg.Image = .{};
             if (material.metallic_roughness.base_color_texture) |tex| {
                 const encoded_bytes = gltf.data.images[gltf.data.textures[tex.index].source.?].data.?;
-                base_color_texture_image = try makeSgImage(alloc, encoded_bytes);
+                base_color_texture_image = try makeSgImage(alloc, (try sprint(alloc, "{s} Base Color Texture", .{material_name})), encoded_bytes);
             } else {
                 base_color_texture_image = sg.makeImage(.{ .label = "Dummy base color texture image", .width = 1, .height = 1, .data = init: {
                     var data = sg.ImageData{};
@@ -194,7 +194,7 @@ const Primitive = struct {
             var metallic_roughness_texture_image: sg.Image = .{};
             if (material.metallic_roughness.metallic_roughness_texture) |tex| {
                 const encoded_bytes = gltf.data.images[gltf.data.textures[tex.index].source.?].data.?;
-                metallic_roughness_texture_image = try makeSgImage(alloc, encoded_bytes);
+                metallic_roughness_texture_image = try makeSgImage(alloc, (try sprint(alloc, "{s} Metallic Roughness Texture", .{material_name})), encoded_bytes);
                 self.has_metallic_roughness_texture = true;
             } else {
                 metallic_roughness_texture_image = sg.makeImage(.{ .label = "Dummy mr texture image", .width = 1, .height = 1, .data = init: {
@@ -261,8 +261,8 @@ pub const GltfViewer = struct {
         const gltf = self.gltf.?;
         var meshes: std.ArrayList(Mesh) = .empty;
 
-        for (gltf.data.meshes) |mesh| {
-            for (mesh.primitives) |gltf_prim| {
+        for (gltf.data.meshes) |gltf_mesh| {
+            for (gltf_mesh.primitives) |gltf_prim| {
                 var prim: Primitive = .{};
                 try prim.loadVertices(alloc, &gltf_prim, &self.gltf.?);
                 try prim.loadIndices(alloc, &gltf_prim, &self.gltf.?);
@@ -273,10 +273,8 @@ pub const GltfViewer = struct {
             }
 
             const mesh_primitives = try primitives.toOwnedSlice(alloc);
-            try meshes.append(alloc, .{
-                .name = mesh.name,
-                .primitives = mesh_primitives,
-            });
+            const mesh: Mesh = .{ .name = gltf_mesh.name, .primitives = mesh_primitives };
+            try meshes.append(alloc, mesh);
         }
         self.meshes = try meshes.toOwnedSlice(alloc);
     }
@@ -379,13 +377,14 @@ pub const GltfViewer = struct {
     }
 };
 
-pub fn makeSgImage(alloc: std.mem.Allocator, buffer: []const u8) !sg.Image {
+pub fn makeSgImage(alloc: std.mem.Allocator, label: []const u8, buffer: []const u8) !sg.Image {
     var img = try zigimg.Image.fromMemory(alloc, buffer);
     const w: i32 = @intCast(img.width);
     const h: i32 = @intCast(img.height);
     try img.convert(alloc, .rgba32);
     const img_pixels = img.rawBytes();
     return sg.makeImage(.{
+        .label = label.ptr,
         .width = w,
         .height = h,
         .pixel_format = .RGBA8,
