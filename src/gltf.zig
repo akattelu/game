@@ -4,6 +4,7 @@ const util = @import("lib/util.zig");
 const math = @import("lib/math.zig");
 const Mat4 = math.Mat4;
 const Vec3 = math.Vec3;
+const Vec4 = math.Vec4;
 const shd = @import("shaders/gltf.glsl.zig");
 const sokol = @import("sokol");
 const ig = @import("cimgui");
@@ -37,6 +38,7 @@ const Vertex = extern struct {
     u: i16,
     v: i16,
     normal: Vec3,
+    tangent: Vec4,
 };
 
 const Primitive = struct {
@@ -117,6 +119,7 @@ pub const GltfViewer = struct {
                                     .color = util.rgbaToU32(255, 255, 255, 255),
                                     .u = 0,
                                     .v = 0,
+                                    .tangent = Vec4.new(0, 0, 0, 0),
                                 });
                                 if (v[1] > y_max) y_max = v[1];
                                 if (v[1] < y_min) y_min = v[1];
@@ -137,6 +140,14 @@ pub const GltfViewer = struct {
                             var i: u32 = 0;
                             while (it.next()) |n| : (i += 1) {
                                 vertices.items[i].color = n[0];
+                            }
+                        },
+                        .tangent => |tangent| {
+                            const accessor = gltf.data.accessors[tangent];
+                            var it = accessor.iterator(f32, &gltf, gltf.glb_binary.?);
+                            var i: u32 = 0;
+                            while (it.next()) |n| : (i += 1) {
+                                vertices.items[i].tangent = Vec4.new(n[0], n[1], n[2], n[3]);
                             }
                         },
                         .texcoord => |texcoord| {
@@ -362,6 +373,7 @@ export fn init(userdata: ?*anyopaque) void {
                 l.attrs[shd.ATTR_gltf_color0].format = .UBYTE4N;
                 l.attrs[shd.ATTR_gltf_texcoord0].format = .SHORT2N;
                 l.attrs[shd.ATTR_gltf_normal].format = .FLOAT3;
+                l.attrs[shd.ATTR_gltf_tangent].format = .FLOAT4;
                 break :init l;
             },
             .index_type = .UINT16,

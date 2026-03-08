@@ -82,6 +82,17 @@ pub const Vec3 = extern struct {
     }
 };
 
+pub const Vec4 = extern struct {
+    x: f32,
+    y: f32,
+    z: f32,
+    w: f32,
+
+    pub fn new(x: f32, y: f32, z: f32, w: f32) Vec4 {
+        return Vec4{ .x = x, .y = y, .z = z, .w = w };
+    }
+};
+
 pub const Mat4 = extern struct {
     m: [4][4]f32,
 
