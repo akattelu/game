@@ -93,6 +93,7 @@ pub const GltfViewer = struct {
 
         var gltf = Gltf.init(alloc);
         try gltf.parse(buffer);
+        gltf.debugPrint();
         self.gltf = gltf;
     }
 
@@ -166,8 +167,8 @@ pub const GltfViewer = struct {
                             var it = accessor.iterator(f32, &gltf, gltf.glb_binary.?);
                             var i: u32 = 0;
                             while (it.next()) |uv| : (i += 1) {
-                                vertices.items[i].u = @intFromFloat(uv[0] * 32767.0);
-                                vertices.items[i].v = @intFromFloat(uv[1] * 32767.0);
+                                vertices.items[i].u = @intFromFloat(@round(std.math.clamp(uv[0], -1.0, 1.0) * 32767.0));
+                                vertices.items[i].v = @intFromFloat(@round(std.math.clamp(uv[1], -1.0, 1.0) * 32767.0));
                             }
                         },
                         else => {},
@@ -280,7 +281,6 @@ pub const GltfViewer = struct {
                 });
             }
 
-            gltf.debugPrint();
             const mesh_primitives = try primitives.toOwnedSlice(alloc);
             try meshes.append(alloc, .{
                 .name = mesh.name,
@@ -407,7 +407,13 @@ pub fn makeSgImage(alloc: std.mem.Allocator, buffer: []const u8) !sg.Image {
 }
 
 export fn init(userdata: ?*anyopaque) void {
-    sg.setup(.{ .environment = sglue.environment(), .logger = .{ .func = slog.func } });
+    sg.setup(.{
+        .environment = sglue.environment(),
+        .logger = .{ .func = slog.func },
+        .buffer_pool_size = 1024,
+        .image_pool_size = 256,
+        .sampler_pool_size = 256,
+    });
     simgui.setup(.{ .logger = .{ .func = slog.func } });
     sgimgui.setup(.{});
     sdtx.setup(.{
