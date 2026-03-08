@@ -46,6 +46,7 @@ const Primitive = struct {
     object_count: u32 = 0,
     y_max: f32 = 0.0,
     y_min: f32 = 0.0,
+    has_normal_map_data: bool = false,
 };
 
 const Mesh = struct {
@@ -75,6 +76,7 @@ pub const GltfViewer = struct {
 
     // Lighting
     apply_texture: bool = true,
+    apply_normal_map: bool = true,
     apply_lighting: bool = true,
     ambient_intensity: f32 = 0.2,
     normal_cell_spacing: f32 = 2.0,
@@ -100,10 +102,10 @@ pub const GltfViewer = struct {
                 var bindings: sg.Bindings = .{};
                 var vertices: std.ArrayList(Vertex) = .empty;
                 var indices: std.ArrayList(u16) = .empty;
-                var img_pixels: []const u8 = "";
                 var obj_count: u32 = 0;
                 var y_max: f32 = 0;
                 var y_min: f32 = 0;
+                var has_normal_map_data: bool = false;
 
                 for (primitive.attributes) |attr| {
                     switch (attr) {
@@ -144,11 +146,13 @@ pub const GltfViewer = struct {
                         },
                         .tangent => |tangent| {
                             const accessor = gltf.data.accessors[tangent];
+                            sdtx.print("Loading tangent values for primitive {d}\n", .{prim_idx});
                             var it = accessor.iterator(f32, &gltf, gltf.glb_binary.?);
                             var i: u32 = 0;
                             while (it.next()) |n| : (i += 1) {
                                 vertices.items[i].tangent = Vec4.new(n[0], n[1], n[2], n[3]);
                             }
+                            has_normal_map_data = true;
                         },
                         .texcoord => |texcoord| {
                             const accessor = gltf.data.accessors[texcoord];
@@ -191,65 +195,55 @@ pub const GltfViewer = struct {
                 // Material processing
                 if (primitive.material) |mat_idx| {
                     const material = gltf.data.materials[mat_idx];
-                    if (material.metallic_roughness.base_color_texture) |tex_info| {
-                        const texture = gltf.data.textures[tex_info.index];
-                        if (texture.source) |img_idx| {
-                            const image = gltf.data.images[img_idx];
-                            if (image.data) |encoded_bytes| {
-                                var img = try zigimg.Image.fromMemory(alloc, encoded_bytes);
-                                const w: i32 = @intCast(img.width);
-                                const h: i32 = @intCast(img.height);
-                                try img.convert(alloc, .rgba32);
-                                img_pixels = img.rawBytes();
-
-                                bindings.views[shd.VIEW_tex] = sg.makeView(.{
-                                    .label = (try sprint(alloc, "{s} Metallic Roughness Base Texture for primitive {d}", .{ material.name.?, prim_idx })).ptr,
-                                    .texture = .{
-                                        .image = sg.makeImage(.{
-                                            .width = w,
-                                            .height = h,
-                                            .pixel_format = .RGBA8,
-                                            .data = init: {
-                                                var data = sg.ImageData{};
-                                                data.mip_levels[0] = sg.asRange(img_pixels);
-                                                break :init data;
-                                            },
-                                        }),
-                                    },
-                                });
-                            }
-                        }
-                    } else { // No metallic roughness base color texture
-                        // Load base texture, even if it won't be applied?
-                        bindings.views[shd.VIEW_tex] = sg.makeView(.{
-                            .label = (try sprint(alloc, "{s} Empty Texture for primitive {d}", .{ material.name.?, prim_idx })).ptr,
-                            .texture = .{
-                                .image = sg.makeImage(.{
-                                    .label = (try sprint(alloc, "{s} Empty Texture for primitive {d}", .{ material.name.?, prim_idx })).ptr,
-                                    .width = 4,
-                                    .height = 4,
-                                    .data = init: {
-                                        var data = sg.ImageData{};
-                                        data.mip_levels[0] = sg.asRange(&[4 * 4]u32{
-                                            0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
-                                            0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
-                                            0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
-                                            0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
-                                        });
-                                        break :init data;
-                                    },
-                                }),
-                            },
-                        });
+                    // Load base color texture image
+                    var normal_map_texture_image: sg.Image = .{};
+                    if (material.normal_texture) |tex| {
+                        sdtx.print("Loading normal map texture for primitive {d}\n", .{prim_idx});
+                        const encoded_bytes = gltf.data.images[gltf.data.textures[tex.index].source.?].data.?;
+                        normal_map_texture_image = try makeSgImage(alloc, encoded_bytes);
+                    } else {
+                        normal_map_texture_image = sg.makeImage(.{ .label = "Dummy base normal map texture image", .width = 1, .height = 1, .data = init: {
+                            var data = sg.ImageData{};
+                            data.mip_levels[0] = sg.asRange(&[1]u32{
+                                0xFFFF8080,
+                            });
+                            break :init data;
+                        } });
+                        has_normal_map_data = false;
                     }
+                    bindings.views[shd.VIEW_normal_tex] = sg.makeView(.{
+                        .label = (try sprint(alloc, "{s} Normal Map Texture for primitive {d}", .{ material.name.?, prim_idx })).ptr,
+                        .texture = .{ .image = normal_map_texture_image },
+                    });
+
+                    // Load base color texture image
+                    var base_color_texture_image: sg.Image = .{};
+                    if (material.metallic_roughness.base_color_texture) |tex| {
+                        const encoded_bytes = gltf.data.images[gltf.data.textures[tex.index].source.?].data.?;
+                        base_color_texture_image = try makeSgImage(alloc, encoded_bytes);
+                    } else {
+                        base_color_texture_image = sg.makeImage(.{ .label = "Dummy base color texture image", .width = 1, .height = 1, .data = init: {
+                            var data = sg.ImageData{};
+                            data.mip_levels[0] = sg.asRange(&[1]u32{
+                                0xFFFFFFFF,
+                            });
+                            break :init data;
+                        } });
+                    }
+                    bindings.views[shd.VIEW_tex] = sg.makeView(.{
+                        .label = (try sprint(alloc, "{s} Metallic Roughness Base Texture for primitive {d}", .{ material.name.?, prim_idx })).ptr,
+                        .texture = .{ .image = base_color_texture_image },
+                    });
                 }
 
                 bindings.samplers[shd.SMP_smp] = sg.makeSampler(.{});
+                bindings.samplers[shd.SMP_normal_smp] = sg.makeSampler(.{});
                 try primitives.append(alloc, .{
                     .binding = bindings,
                     .object_count = obj_count,
                     .y_max = y_max,
                     .y_min = y_min,
+                    .has_normal_map_data = has_normal_map_data,
                 });
             }
 
@@ -283,7 +277,7 @@ pub const GltfViewer = struct {
         };
     }
 
-    fn fsUniforms(self: *GltfViewer) shd.FsParams {
+    fn fsUniforms(self: *GltfViewer, prim: *const Primitive) shd.FsParams {
         return .{
             .light_dir = Vec3.new(
                 @cos(self.elevation_angle) * @sin(self.azimuth_angle),
@@ -293,6 +287,7 @@ pub const GltfViewer = struct {
             .light_color = self.light_color,
             .use_texture = if (self.apply_texture) 1.0 else 0.0,
             .use_lighting = if (self.apply_lighting) 1.0 else 0.0,
+            .use_normal_map = if (self.apply_normal_map and prim.has_normal_map_data) 1.0 else 0.0,
             .ambient_intensity = self.ambient_intensity,
         };
     }
@@ -307,6 +302,13 @@ pub const GltfViewer = struct {
                 if (ig.igBeginTabItem("General", null, 0)) {
                     _ = ig.igText("Mesh Count: %d", self.meshes.?.len);
                     _ = ig.igText("Now viewing mesh number: %d", self.selected_mesh_index);
+                    _ = ig.igCheckbox("Apply Texture?", &self.apply_texture);
+                    for (self.meshes.?[self.selected_mesh_index].primitives) |prim| {
+                        if (prim.has_normal_map_data) {
+                            // Will run once per primitive but its fine
+                            _ = ig.igCheckbox("Apply Normal Map?", &self.apply_normal_map);
+                        }
+                    }
 
                     if (ig.igArrowButton("Previous Mesh", ig.ImGuiDir_Left)) {
                         if (self.selected_mesh_index != 0) {
@@ -324,7 +326,6 @@ pub const GltfViewer = struct {
                 }
                 if (ig.igBeginTabItem("Lighting", null, 0)) {
                     _ = ig.igCheckbox("Apply Lighting?", &self.apply_lighting);
-                    _ = ig.igCheckbox("Apply Texture?", &self.apply_texture);
                     _ = ig.igSliderFloat("Cell Spacing", &self.normal_cell_spacing, 0.01, 10.0);
                     _ = ig.igSliderFloat("Ambient Light Intensity", &self.ambient_intensity, 0.1, 1.0);
                     _ = ig.igSliderFloat("Azimuth Angle", &self.azimuth_angle, 0.0, 2 * std.math.pi);
@@ -344,6 +345,24 @@ pub const GltfViewer = struct {
         ig.igEnd();
     }
 };
+
+pub fn makeSgImage(alloc: std.mem.Allocator, buffer: []const u8) !sg.Image {
+    var img = try zigimg.Image.fromMemory(alloc, buffer);
+    const w: i32 = @intCast(img.width);
+    const h: i32 = @intCast(img.height);
+    try img.convert(alloc, .rgba32);
+    const img_pixels = img.rawBytes();
+    return sg.makeImage(.{
+        .width = w,
+        .height = h,
+        .pixel_format = .RGBA8,
+        .data = init: {
+            var data = sg.ImageData{};
+            data.mip_levels[0] = sg.asRange(img_pixels);
+            break :init data;
+        },
+    });
+}
 
 export fn init(userdata: ?*anyopaque) void {
     sg.setup(.{ .environment = sglue.environment(), .logger = .{ .func = slog.func } });
@@ -408,7 +427,7 @@ export fn frame(userdata: ?*anyopaque) void {
     for (mesh.primitives) |prim| {
         sg.applyBindings(prim.binding);
         sg.applyUniforms(shd.UB_vs_params, sg.asRange(&state.vsUniforms(&prim)));
-        sg.applyUniforms(shd.UB_fs_params, sg.asRange(&state.fsUniforms()));
+        sg.applyUniforms(shd.UB_fs_params, sg.asRange(&state.fsUniforms(&prim)));
         sg.draw(0, prim.object_count, 1);
     }
 

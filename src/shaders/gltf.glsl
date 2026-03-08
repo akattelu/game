@@ -32,11 +32,15 @@ void main() {
 layout(binding=0) uniform texture2D tex;
 layout(binding=0) uniform sampler smp;
 
-layout(binding=1) uniform fs_params {
+layout(binding=1) uniform texture2D normal_tex;
+layout(binding=1) uniform sampler normal_smp;
+
+layout(binding=2) uniform fs_params {
     vec3 light_dir;
     vec3 light_color;
     float use_texture;
     float use_lighting;
+    float use_normal_map;
     float ambient_intensity;
 };
 
@@ -49,7 +53,18 @@ out vec4 frag_color;
 
 void main() {
     vec4 tex_color = texture(sampler2D(tex, smp), uv);
-    vec3 N = normalize(v_normal);
+    vec3 N;
+    if (use_normal_map == 1.0) {
+        vec3 T = normalize(v_tangent.xyz);
+        vec3 Nv = normalize(v_normal);
+        vec3 B = cross(Nv, T) * v_tangent.w;
+        mat3 TBN = mat3(T, B, Nv);
+
+        vec3 map_normal = texture(sampler2D(normal_tex, normal_smp), uv).rgb * 2.0 - 1.0;
+        N = normalize(TBN * map_normal);
+    } else {
+        N = normalize(v_normal);
+    }
 
     if (use_lighting ==  1.0) {
         float diffuse = max(dot(N, normalize(light_dir)), 0.0);
