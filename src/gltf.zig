@@ -218,11 +218,27 @@ const Mesh = struct {
     primitives: []Primitive,
 };
 
+const NUM_ASSETS = 8;
+const available_assets: [NUM_ASSETS][]const u8 = .{
+    "CompareMetallic.glb",
+    "CompareNormal.glb",
+    "CompareRoughness.glb",
+    "NormalTangentMirrorTest.glb",
+    "Skely.glb",
+    "StairsXL.glb",
+    "street.glb",
+    "Skeleton_Mage.glb",
+};
+
 pub const GltfViewer = struct {
     // GLTF Core
     meshes: ?[]Mesh = null,
     gltf: ?Gltf = null,
     selected_mesh_index: usize = 0,
+
+    // Asset loader
+    assets_selection_state: [NUM_ASSETS]bool = undefined,
+    selected_asset_index: ?usize = null,
 
     // Other UI
     imgui_window_open: bool = true,
@@ -320,14 +336,14 @@ pub const GltfViewer = struct {
         };
     }
 
-    fn ui(self: *GltfViewer) void {
+    fn ui(self: *GltfViewer, alloc: std.mem.Allocator) void {
         if (ig.igBeginMainMenuBar()) {
             sgimgui.drawMenu("sokol-gfx");
             ig.igEndMainMenuBar();
         }
         if (ig.igBegin("GLTF/GLB Viewer", &self.imgui_window_open, ig.ImGuiWindowFlags_AlwaysAutoResize)) {
             if (ig.igBeginTabBar("Settings", 0)) {
-                if (self.gltf) |_| {
+                if (self.gltf) |_| { // Only if mesh is already loaded
                     if (ig.igBeginTabItem("General", null, 0)) {
                         _ = ig.igText("Mesh Count: %d", self.meshes.?.len);
                         _ = ig.igText("Now viewing mesh number: %d", self.selected_mesh_index);
@@ -362,6 +378,20 @@ pub const GltfViewer = struct {
                         _ = ig.igSliderFloat("Azimuth Angle", &self.azimuth_angle, 0.0, 2 * std.math.pi);
                         _ = ig.igSliderFloat("Elevation angle", &self.elevation_angle, 0.0, std.math.pi / 2.0);
                         _ = ig.igColorEdit3("Lighting Color", @ptrCast(&self.light_color), 0);
+                        ig.igEndTabItem();
+                    }
+                } else {
+                    if (ig.igBeginTabItem("Loader", null, 0)) {
+                        const preview = if (self.selected_asset_index) |a| available_assets[a] else "Pick a file...";
+                        if (ig.igBeginCombo("Select an asset to load", preview.ptr, 0)) {
+                            for (&self.assets_selection_state, 0..) |*selected, i| {
+                                if (ig.igSelectableBoolPtr(available_assets[i].ptr, selected, 0)) {
+                                    self.selected_asset_index = i;
+                                }
+                            }
+                            _ = alloc;
+                            ig.igEndCombo();
+                        }
                         ig.igEndTabItem();
                     }
                 }
@@ -458,6 +488,8 @@ export fn frame(userdata: ?*anyopaque) void {
 
     // Setup imgui
     sg.beginPass(.{ .swapchain = sglue.swapchain(), .action = state.pass_action });
+    sdtx.origin(0.0, 2.0);
+    sdtx.home();
     simgui.newFrame(.{
         .width = sapp.width(),
         .height = sapp.height(),
@@ -465,7 +497,11 @@ export fn frame(userdata: ?*anyopaque) void {
         .dpi_scale = sapp.dpiScale(),
     });
 
-    state.ui();
+    state.ui(arena.allocator());
+    if (state.selected_asset_index) |a| {
+        const asset = available_assets[a];
+        sdtx.print("Currently selected asset: {d} {s}\n", .{ a, asset });
+    }
 
     // Pipeline
     sg.applyPipeline(state.pipeline);
@@ -479,9 +515,9 @@ export fn frame(userdata: ?*anyopaque) void {
         }
     }
 
-    sdtx.draw();
     sgimgui.draw();
     simgui.render();
+    sdtx.draw();
 
     sg.endPass();
     sg.commit();
