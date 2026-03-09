@@ -40,65 +40,21 @@ pub fn build(b: *std.Build) !void {
         .safe => .ReleaseSafe,
         else => unreachable,
     };
-    const variants: []const BuildVariant = &.{
-        .{
-            .optimize = optimize,
-            .target = .webgpu,
-            .root_app_name = "terrain_cpu",
-        },
-        .{
-            .optimize = optimize,
-            .target = .webgl,
-            .root_app_name = "terrain_cpu",
-        },
-        .{
-            .optimize = optimize,
-            .target = .{ .native = .{} },
-            .root_app_name = "terrain_cpu",
-        },
-        .{
-            .optimize = optimize,
-            .target = .{ .native = .{ .cpu_arch = .x86_64, .os_tag = .windows } },
-            .root_app_name = "terrain_cpu",
-        },
-        .{
-            .optimize = optimize,
-            .target = .webgpu,
-            .root_app_name = "terrain_gpu",
-        },
-        .{
-            .optimize = optimize,
-            .target = .webgl,
-            .root_app_name = "terrain_gpu",
-        },
-        .{
-            .optimize = optimize,
-            .target = .{ .native = .{} },
-            .root_app_name = "terrain_gpu",
-        },
-        .{
-            .optimize = optimize,
-            .target = .{ .native = .{ .cpu_arch = .x86_64, .os_tag = .windows } },
-            .root_app_name = "terrain_gpu",
-        },
-        .{
-            .optimize = optimize,
-            .target = .{ .native = .{} },
-            .root_app_name = "gltf_viewer",
-        },
-        .{
-            .optimize = optimize,
-            .target = .webgpu,
-            .root_app_name = "gltf_viewer",
-        },
-        .{
-            .optimize = optimize,
-            .target = .webgl,
-            .root_app_name = "gltf_viewer",
-        },
+    const targets: []const SokolTarget = &.{
+        .webgpu,
+        .webgl,
+        .{ .native = .{} },
+        .{ .native = .{ .cpu_arch = .x86_64, .os_tag = .windows } },
     };
-    for (variants) |variant| {
-        try buildFor(b, variant);
+    const root_app_names: []const []const u8 = &.{
+        "terrain_cpu",
+        "terrain_gpu",
+        "gltf_viewer",
+    };
+    for (targets) |target| {
+        for (root_app_names) |root_app_name| {
+            try buildFor(b, .{ .optimize = optimize, .target = target, .root_app_name = root_app_name });
+        }
     }
 }
 
