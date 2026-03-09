@@ -23,7 +23,7 @@ const Vec4 = math.Vec4;
 const util = @import("lib/util.zig");
 const shd = @import("shaders/gltf.glsl.zig");
 const gltf_loader = @import("lib/gltf_loader.zig");
-const Mesh = gltf_loader.Mesh;
+const GltfModel = gltf_loader.GltfModel;
 const Vertex = gltf_loader.Vertex;
 const Primitive = gltf_loader.Primitive;
 
@@ -46,16 +46,10 @@ const available_assets: [NUM_ASSETS][]const u8 = .{
     "Skeleton_Mage",
 };
 
-const GltfModel = struct {
-    gltf: Gltf,
-    meshes: []Mesh,
-};
-
 const GltfViewer = struct {
     // GLTF Core
-    meshes: ?[]Mesh = null,
-    gltf: ?Gltf = null,
-    selected_mesh_index: usize = 0,
+    model: ?GltfModel = null,
+    selected_model_index: usize = 0,
 
     // Asset loader
     assets_selection_state: [NUM_ASSETS]bool = undefined,
@@ -87,41 +81,20 @@ const GltfViewer = struct {
     light_color: Vec3 = Vec3.ones(),
 
     pub fn loadGlb(self: *GltfViewer, alloc: std.mem.Allocator, range: sfetch.Range) !void {
-        if (self.meshes) |meshes| {
-            for (meshes) |*mesh| {
-                mesh.deinit();
-            }
+        if (self.model) |*model| {
+            model.deinit();
         }
         const buffer: [*]align(4) const u8 = @ptrCast(@alignCast(range.ptr.?));
         const slice: []align(4) const u8 = buffer[0..range.size];
+
         var gltf = Gltf.init(alloc);
         try gltf.parse(slice);
-        gltf.debugPrint();
-        self.gltf = gltf;
-    }
 
-    pub fn initPrimitives(self: *GltfViewer, alloc: std.mem.Allocator) !void {
-        var primitives: std.ArrayList(Primitive) = .empty;
-        const gltf = self.gltf.?;
-        var meshes: std.ArrayList(Mesh) = .empty;
-
-        for (gltf.data.meshes) |gltf_mesh| {
-            for (gltf_mesh.primitives) |gltf_prim| {
-                // var prim: Primitive = .{ .vertices = undefined,  };
-                var prim: Primitive = .init(alloc);
-                try prim.loadVertices(&gltf_prim, &self.gltf.?);
-                try prim.loadIndices(&gltf_prim, &self.gltf.?);
-                try prim.loadMaterial(&gltf_prim, &self.gltf.?);
-                prim.loadSamplers();
-
-                try primitives.append(alloc, prim);
-            }
-
-            const mesh_primitives = try primitives.toOwnedSlice(alloc);
-            const mesh: Mesh = .{ .name = gltf_mesh.name, .primitives = mesh_primitives };
-            try meshes.append(alloc, mesh);
-        }
-        self.meshes = try meshes.toOwnedSlice(alloc);
+        self.model = .{
+            .gltf = gltf,
+            .meshes = undefined,
+        };
+        try self.model.?.initMeshes(alloc);
     }
 
     fn vsUniforms(self: *GltfViewer, prim: *const Primitive) shd.VsParams {
@@ -170,12 +143,13 @@ const GltfViewer = struct {
         }
         if (ig.igBegin("GLTF/GLB Viewer", &self.imgui_window_open, ig.ImGuiWindowFlags_AlwaysAutoResize)) {
             if (ig.igBeginTabBar("Settings", 0)) {
-                if (self.gltf) |_| { // Only if mesh is already loaded
+                if (self.model) |model| { // Only if mesh is already loaded
+                    const meshes = model.meshes;
                     if (ig.igBeginTabItem("General", null, 0)) {
-                        _ = ig.igText("Mesh Count: %d", self.meshes.?.len);
-                        _ = ig.igText("Now viewing mesh number: %d", self.selected_mesh_index);
+                        _ = ig.igText("Mesh Count: %d", meshes.len);
+                        _ = ig.igText("Now viewing mesh number: %d", self.selected_model_index);
                         _ = ig.igCheckbox("Apply Texture?", &self.apply_texture);
-                        for (self.meshes.?[self.selected_mesh_index].primitives) |prim| {
+                        for (meshes[self.selected_model_index].primitives) |prim| {
                             // Will run once per primitive but its fine
                             if (prim.has_normal_map_data) {
                                 _ = ig.igCheckbox("Apply Normal Map?", &self.apply_normal_map);
@@ -188,12 +162,12 @@ const GltfViewer = struct {
                         }
 
                         if (ig.igArrowButton("Previous Mesh", ig.ImGuiDir_Left)) {
-                            if (self.selected_mesh_index != 0) {
-                                self.selected_mesh_index = self.selected_mesh_index - 1;
+                            if (self.selected_model_index != 0) {
+                                self.selected_model_index = self.selected_model_index - 1;
                             }
                         }
                         if (ig.igArrowButton("Next Mesh", ig.ImGuiDir_Right)) {
-                            self.selected_mesh_index = @min(self.selected_mesh_index + 1, self.meshes.?.len - 1);
+                            self.selected_model_index = @min(self.selected_model_index + 1, meshes.len - 1);
                         }
                         ig.igEndTabItem();
                     }
@@ -256,8 +230,6 @@ export fn onAssetResponse(response: [*c]const sfetch.Response) void {
     const r = response.*;
     if (r.fetched) {
         st.loadGlb(allocator(), r.buffer) catch @panic("Fetch failed");
-        st.initPrimitives(allocator()) catch @panic("Failed to initialize primitives");
-        return;
     }
     if (r.finished) {
         if (r.failed) {
@@ -337,8 +309,8 @@ export fn frame(userdata: ?*anyopaque) void {
 
     // Pipeline
     sg.applyPipeline(state.pipeline);
-    if (state.meshes) |meshes| {
-        const mesh = meshes[state.selected_mesh_index];
+    if (state.model) |model| {
+        const mesh = model.meshes[state.selected_model_index];
         for (mesh.primitives) |prim| {
             sg.applyBindings(prim.binding);
             sg.applyUniforms(shd.UB_vs_params, sg.asRange(&state.vsUniforms(&prim)));

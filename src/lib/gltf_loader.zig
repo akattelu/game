@@ -26,6 +26,37 @@ pub const Vertex = extern struct {
     tangent: Vec4,
 };
 
+pub const GltfModel = struct {
+    gltf: Gltf,
+    meshes: []Mesh,
+
+    pub fn deinit(self: *GltfModel) void {
+        for (self.meshes) |*mesh| {
+            mesh.deinit();
+        }
+    }
+    pub fn initMeshes(self: *GltfModel, alloc: std.mem.Allocator) !void {
+        var primitives: std.ArrayList(Primitive) = .empty;
+        var meshes: std.ArrayList(Mesh) = .empty;
+
+        for (self.gltf.data.meshes) |gltf_mesh| {
+            for (gltf_mesh.primitives) |gltf_prim| {
+                var prim: Primitive = .init(alloc);
+                try prim.loadVertices(&gltf_prim, &self.gltf);
+                try prim.loadIndices(&gltf_prim, &self.gltf);
+                try prim.loadMaterial(&gltf_prim, &self.gltf);
+                try prim.loadSamplers();
+
+                try primitives.append(alloc, prim);
+            }
+
+            const mesh_primitives = try primitives.toOwnedSlice(alloc);
+            const mesh: Mesh = .{ .name = gltf_mesh.name, .primitives = mesh_primitives };
+            try meshes.append(alloc, mesh);
+        }
+        self.meshes = try meshes.toOwnedSlice(alloc);
+    }
+};
 pub const Mesh = struct {
     name: ?[]const u8,
     primitives: []Primitive,
@@ -167,7 +198,7 @@ pub const Primitive = struct {
         }
     }
 
-    pub fn loadSamplers(self: *Primitive) void {
+    pub fn loadSamplers(self: *Primitive) !void {
         self.binding.samplers[shd.SMP_smp] = sg.makeSampler(.{});
         self.binding.samplers[shd.SMP_normal_smp] = sg.makeSampler(.{});
         self.binding.samplers[shd.SMP_mr_smp] = sg.makeSampler(.{});
