@@ -84,7 +84,7 @@ pub fn build(b: *std.Build) !void {
         .{
             .optimize = optimize,
             .target = .{ .native = .{} },
-            .root_app_name = "gltf",
+            .root_app_name = "gltf_viewer",
         },
     };
     for (variants) |variant| {
