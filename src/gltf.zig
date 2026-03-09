@@ -1,13 +1,12 @@
-const Gltf = @import("zgltf").Gltf;
 const std = @import("std");
-const util = @import("lib/util.zig");
-const math = @import("lib/math.zig");
-const Mat4 = math.Mat4;
-const Vec3 = math.Vec3;
-const Vec4 = math.Vec4;
-const shd = @import("shaders/gltf.glsl.zig");
-const sokol = @import("sokol");
+const print = std.debug.print;
+const sprint = std.fmt.allocPrint;
+const builtin = @import("builtin");
+
+const Gltf = @import("zgltf").Gltf;
 const ig = @import("cimgui");
+const sokol = @import("sokol");
+const sfetch = sokol.fetch;
 const slog = sokol.log;
 const sg = sokol.gfx;
 const sapp = sokol.app;
@@ -15,10 +14,14 @@ const sglue = sokol.glue;
 const sdtx = sokol.debugtext;
 const simgui = sokol.imgui;
 const sgimgui = sokol.sgimgui;
-const builtin = @import("builtin");
 const zigimg = @import("zigimg");
-const print = std.debug.print;
-const sprint = std.fmt.allocPrint;
+
+const math = @import("lib/math.zig");
+const Mat4 = math.Mat4;
+const Vec3 = math.Vec3;
+const Vec4 = math.Vec4;
+const util = @import("lib/util.zig");
+const shd = @import("shaders/gltf.glsl.zig");
 
 inline fn allocator() std.mem.Allocator {
     if (builtin.cpu.arch.isWasm()) {
@@ -48,7 +51,6 @@ const Primitive = struct {
     roughness_factor: f32 = 1.0,
     has_normal_map_data: bool = false,
     has_metallic_roughness_texture: bool = false,
-    vertices: []Vertex = undefined,
 
     fn loadVertices(self: *Primitive, alloc: std.mem.Allocator, gltf_prim: *const Gltf.Primitive, gltf: *Gltf) !void {
         var vertices: std.ArrayList(Vertex) = .empty;
@@ -107,13 +109,13 @@ const Primitive = struct {
                 else => {},
             }
         }
-        self.vertices = try vertices.toOwnedSlice(alloc);
+        const owned_vertices = try vertices.toOwnedSlice(alloc);
 
         // Load vertex buffer with all info from parsing vertex attributes
         self.binding.vertex_buffers[0] = sg.makeBuffer(.{
             .label = "Primitive Vertex Buffer",
             .usage = .{ .vertex_buffer = true },
-            .data = sg.asRange(self.vertices),
+            .data = sg.asRange(owned_vertices),
         });
     }
 
@@ -325,45 +327,50 @@ pub const GltfViewer = struct {
         }
         if (ig.igBegin("GLTF/GLB Viewer", &self.imgui_window_open, ig.ImGuiWindowFlags_AlwaysAutoResize)) {
             if (ig.igBeginTabBar("Settings", 0)) {
-                if (ig.igBeginTabItem("General", null, 0)) {
-                    _ = ig.igText("Mesh Count: %d", self.meshes.?.len);
-                    _ = ig.igText("Now viewing mesh number: %d", self.selected_mesh_index);
-                    _ = ig.igCheckbox("Apply Texture?", &self.apply_texture);
-                    for (self.meshes.?[self.selected_mesh_index].primitives) |prim| {
-                        if (prim.has_normal_map_data) {
+                if (self.gltf) |_| {
+                    if (ig.igBeginTabItem("General", null, 0)) {
+                        _ = ig.igText("Mesh Count: %d", self.meshes.?.len);
+                        _ = ig.igText("Now viewing mesh number: %d", self.selected_mesh_index);
+                        _ = ig.igCheckbox("Apply Texture?", &self.apply_texture);
+                        for (self.meshes.?[self.selected_mesh_index].primitives) |prim| {
                             // Will run once per primitive but its fine
-                            _ = ig.igCheckbox("Apply Normal Map?", &self.apply_normal_map);
+                            if (prim.has_normal_map_data) {
+                                _ = ig.igCheckbox("Apply Normal Map?", &self.apply_normal_map);
+                            }
+                            if (prim.has_metallic_roughness_texture) {
+                                _ = ig.igText("Metallic Factor: %.2f", prim.metallic_factor);
+                                _ = ig.igText("Roughness Factor: %.2f", prim.roughness_factor);
+                                _ = ig.igCheckbox("Apply Metallic Roughness Texture?", &self.apply_metallic_roughness_texture);
+                            }
                         }
-                        if (prim.has_metallic_roughness_texture) {
-                            _ = ig.igText("Metallic Factor: %.2f", prim.metallic_factor);
-                            _ = ig.igText("Roughness Factor: %.2f", prim.roughness_factor);
-                            _ = ig.igCheckbox("Apply Metallic Roughness Texture?", &self.apply_metallic_roughness_texture);
+
+                        if (ig.igArrowButton("Previous Mesh", ig.ImGuiDir_Left)) {
+                            if (self.selected_mesh_index != 0) {
+                                self.selected_mesh_index = self.selected_mesh_index - 1;
+                            }
                         }
+                        if (ig.igArrowButton("Next Mesh", ig.ImGuiDir_Right)) {
+                            self.selected_mesh_index = @min(self.selected_mesh_index + 1, self.meshes.?.len - 1);
+                        }
+                        ig.igEndTabItem();
                     }
 
-                    if (ig.igArrowButton("Previous Mesh", ig.ImGuiDir_Left)) {
-                        if (self.selected_mesh_index != 0) {
-                            self.selected_mesh_index = self.selected_mesh_index - 1;
-                        }
+                    if (ig.igBeginTabItem("Lighting", null, 0)) {
+                        _ = ig.igCheckbox("Apply Lighting?", &self.apply_lighting);
+                        _ = ig.igSliderFloat("Cell Spacing", &self.normal_cell_spacing, 0.01, 10.0);
+                        _ = ig.igSliderFloat("Ambient Light Intensity", &self.ambient_intensity, 0.1, 1.0);
+                        _ = ig.igSliderFloat("Azimuth Angle", &self.azimuth_angle, 0.0, 2 * std.math.pi);
+                        _ = ig.igSliderFloat("Elevation angle", &self.elevation_angle, 0.0, std.math.pi / 2.0);
+                        _ = ig.igColorEdit3("Lighting Color", @ptrCast(&self.light_color), 0);
+                        ig.igEndTabItem();
                     }
-                    if (ig.igArrowButton("Next Mesh", ig.ImGuiDir_Right)) {
-                        self.selected_mesh_index = @min(self.selected_mesh_index + 1, self.meshes.?.len - 1);
-                    }
-                    ig.igEndTabItem();
                 }
+
                 if (ig.igBeginTabItem("Meta", null, 0)) {
                     _ = ig.igBulletText("Dear ImGui Version: %s", ig.IMGUI_VERSION);
                     ig.igEndTabItem();
                 }
-                if (ig.igBeginTabItem("Lighting", null, 0)) {
-                    _ = ig.igCheckbox("Apply Lighting?", &self.apply_lighting);
-                    _ = ig.igSliderFloat("Cell Spacing", &self.normal_cell_spacing, 0.01, 10.0);
-                    _ = ig.igSliderFloat("Ambient Light Intensity", &self.ambient_intensity, 0.1, 1.0);
-                    _ = ig.igSliderFloat("Azimuth Angle", &self.azimuth_angle, 0.0, 2 * std.math.pi);
-                    _ = ig.igSliderFloat("Elevation angle", &self.elevation_angle, 0.0, std.math.pi / 2.0);
-                    _ = ig.igColorEdit3("Lighting Color", @ptrCast(&self.light_color), 0);
-                    ig.igEndTabItem();
-                }
+
                 if (ig.igBeginTabItem("Camera", null, 0)) {
                     _ = ig.igSliderFloat("Camera Theta", &self.camera_theta, 0.0, 2 * std.math.pi);
                     _ = ig.igSliderFloat("Camera Phi", &self.camera_phi, 0.0, 2 * std.math.pi);
@@ -416,9 +423,11 @@ export fn init(userdata: ?*anyopaque) void {
     });
 
     const state: *GltfViewer = @ptrCast(@alignCast(userdata));
-    state.initPrimitives(allocator()) catch {
-        @panic("Failed to initialize primitives");
-    };
+    if (state.gltf) |_| {
+        state.initPrimitives(allocator()) catch {
+            @panic("Failed to initialize primitives");
+        };
+    }
 
     state.pipeline = sg.makePipeline(
         .{
@@ -446,7 +455,6 @@ export fn frame(userdata: ?*anyopaque) void {
     var arena = std.heap.ArenaAllocator.init(allocator());
     defer arena.deinit();
     const state: *GltfViewer = @ptrCast(@alignCast(userdata));
-    _ = arena.allocator();
 
     // Setup imgui
     sg.beginPass(.{ .swapchain = sglue.swapchain(), .action = state.pass_action });
@@ -461,12 +469,14 @@ export fn frame(userdata: ?*anyopaque) void {
 
     // Pipeline
     sg.applyPipeline(state.pipeline);
-    const mesh = state.meshes.?[state.selected_mesh_index];
-    for (mesh.primitives) |prim| {
-        sg.applyBindings(prim.binding);
-        sg.applyUniforms(shd.UB_vs_params, sg.asRange(&state.vsUniforms(&prim)));
-        sg.applyUniforms(shd.UB_fs_params, sg.asRange(&state.fsUniforms(&prim)));
-        sg.draw(0, prim.object_count, 1);
+    if (state.meshes) |meshes| {
+        const mesh = meshes[state.selected_mesh_index];
+        for (mesh.primitives) |prim| {
+            sg.applyBindings(prim.binding);
+            sg.applyUniforms(shd.UB_vs_params, sg.asRange(&state.vsUniforms(&prim)));
+            sg.applyUniforms(shd.UB_fs_params, sg.asRange(&state.fsUniforms(&prim)));
+            sg.draw(0, prim.object_count, 1);
+        }
     }
 
     sdtx.draw();
@@ -516,6 +526,7 @@ export fn event(e: [*c]const sapp.Event, userdata: ?*anyopaque) callconv(.c) voi
 
 pub fn main() !void {
     const alloc = allocator();
+
     var iter = try std.process.argsWithAllocator(alloc);
     defer iter.deinit();
     _ = iter.next();
