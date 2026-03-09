@@ -32,6 +32,7 @@ inline fn allocator() std.mem.Allocator {
 }
 
 var st: GltfViewer = .{};
+var sfetch_buffer: [1024 * 1024 * 1024]u8 = undefined;
 
 const Vertex = extern struct {
     x: f32,
@@ -220,14 +221,14 @@ const Mesh = struct {
 
 const NUM_ASSETS = 8;
 const available_assets: [NUM_ASSETS][]const u8 = .{
-    "CompareMetallic.glb",
-    "CompareNormal.glb",
-    "CompareRoughness.glb",
-    "NormalTangentMirrorTest.glb",
-    "Skely.glb",
-    "StairsXL.glb",
-    "street.glb",
-    "Skeleton_Mage.glb",
+    "CompareMetallic",
+    "CompareNormal",
+    "CompareRoughness",
+    "NormalTangentMirrorTest",
+    "Skely",
+    "StairsXL",
+    "street",
+    "Skeleton_Mage",
 };
 
 pub const GltfViewer = struct {
@@ -265,11 +266,11 @@ pub const GltfViewer = struct {
     elevation_angle: f32 = 0.0,
     light_color: Vec3 = Vec3.ones(),
 
-    pub fn loadGlb(self: *GltfViewer, alloc: std.mem.Allocator, path: []const u8) !void {
-        const buffer = try std.fs.cwd().readFileAllocOptions(alloc, path, 512_000_000, null, .@"4", null);
-
+    pub fn loadGlb(self: *GltfViewer, alloc: std.mem.Allocator, range: sfetch.Range) !void {
+        const buffer: [*]align(4) const u8 = @ptrCast(@alignCast(range.ptr.?));
+        const slice: []align(4) const u8 = buffer[0..range.size];
         var gltf = Gltf.init(alloc);
-        try gltf.parse(buffer);
+        try gltf.parse(slice);
         gltf.debugPrint();
         self.gltf = gltf;
     }
@@ -387,9 +388,9 @@ pub const GltfViewer = struct {
                             for (&self.assets_selection_state, 0..) |*selected, i| {
                                 if (ig.igSelectableBoolPtr(available_assets[i].ptr, selected, 0)) {
                                     self.selected_asset_index = i;
+                                    self.initiateAssetFetch(alloc) catch @panic("Failed to fetch asset");
                                 }
                             }
-                            _ = alloc;
                             ig.igEndCombo();
                         }
                         ig.igEndTabItem();
@@ -412,7 +413,33 @@ pub const GltfViewer = struct {
         }
         ig.igEnd();
     }
+
+    fn initiateAssetFetch(self: *GltfViewer, alloc: std.mem.Allocator) !void {
+        if (self.selected_asset_index) |idx| {
+            const path = try std.fmt.allocPrintSentinel(alloc, "assets/{s}.glb", .{available_assets[idx]}, 0);
+            std.debug.assert(sfetch.valid());
+            _ = sfetch.send(.{
+                .path = path.ptr,
+                .callback = onAssetResponse,
+                .buffer = .{ .ptr = &sfetch_buffer, .size = sfetch_buffer.len },
+            });
+        }
+    }
 };
+
+export fn onAssetResponse(response: [*c]const sfetch.Response) void {
+    const r = response.*;
+    if (r.fetched) {
+        st.loadGlb(allocator(), r.buffer) catch @panic("Fetch failed");
+        st.initPrimitives(allocator()) catch @panic("Failed to initialize primitives");
+        return;
+    }
+    if (r.finished) {
+        if (r.failed) {
+            std.debug.panic("onAssetResponse: fetch failed {s}", .{@tagName(r.error_code)});
+        }
+    }
+}
 
 pub fn makeSgImage(alloc: std.mem.Allocator, label: []const u8, buffer: []const u8) !sg.Image {
     var img = try zigimg.Image.fromMemory(alloc, buffer);
@@ -451,13 +478,14 @@ export fn init(userdata: ?*anyopaque) void {
         },
         .logger = .{ .func = slog.func },
     });
+    sfetch.setup(.{
+        .max_requests = 8,
+        .num_channels = 1,
+        .num_lanes = 4,
+        .logger = .{ .func = slog.func },
+    });
 
     const state: *GltfViewer = @ptrCast(@alignCast(userdata));
-    if (state.gltf) |_| {
-        state.initPrimitives(allocator()) catch {
-            @panic("Failed to initialize primitives");
-        };
-    }
 
     state.pipeline = sg.makePipeline(
         .{
@@ -486,6 +514,8 @@ export fn frame(userdata: ?*anyopaque) void {
     defer arena.deinit();
     const state: *GltfViewer = @ptrCast(@alignCast(userdata));
 
+    sfetch.dowork();
+
     // Setup imgui
     sg.beginPass(.{ .swapchain = sglue.swapchain(), .action = state.pass_action });
     sdtx.origin(0.0, 2.0);
@@ -498,10 +528,6 @@ export fn frame(userdata: ?*anyopaque) void {
     });
 
     state.ui(arena.allocator());
-    if (state.selected_asset_index) |a| {
-        const asset = available_assets[a];
-        sdtx.print("Currently selected asset: {d} {s}\n", .{ a, asset });
-    }
 
     // Pipeline
     sg.applyPipeline(state.pipeline);
@@ -525,6 +551,7 @@ export fn frame(userdata: ?*anyopaque) void {
 
 export fn cleanup(userdata: ?*anyopaque) void {
     _ = userdata;
+    sfetch.shutdown();
     sgimgui.shutdown();
     sg.shutdown();
 }
@@ -561,14 +588,6 @@ export fn event(e: [*c]const sapp.Event, userdata: ?*anyopaque) callconv(.c) voi
 }
 
 pub fn main() !void {
-    const alloc = allocator();
-
-    var iter = try std.process.argsWithAllocator(alloc);
-    defer iter.deinit();
-    _ = iter.next();
-    if (iter.next()) |path| {
-        try st.loadGlb(alloc, path);
-    }
     sapp.run(.{
         .init_userdata_cb = init,
         .frame_userdata_cb = frame,
