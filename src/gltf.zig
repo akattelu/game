@@ -381,20 +381,19 @@ pub const GltfViewer = struct {
                         _ = ig.igColorEdit3("Lighting Color", @ptrCast(&self.light_color), 0);
                         ig.igEndTabItem();
                     }
-                } else {
-                    if (ig.igBeginTabItem("Loader", null, 0)) {
-                        const preview = if (self.selected_asset_index) |a| available_assets[a] else "Pick a file...";
-                        if (ig.igBeginCombo("Select an asset to load", preview.ptr, 0)) {
-                            for (&self.assets_selection_state, 0..) |*selected, i| {
-                                if (ig.igSelectableBoolPtr(available_assets[i].ptr, selected, 0)) {
-                                    self.selected_asset_index = i;
-                                    self.initiateAssetFetch(alloc) catch @panic("Failed to fetch asset");
-                                }
+                }
+                if (ig.igBeginTabItem("Loader", null, 0)) {
+                    const preview = if (self.selected_asset_index) |a| available_assets[a] else "Pick a file...";
+                    if (ig.igBeginCombo("Select an asset to load", preview.ptr, 0)) {
+                        for (&self.assets_selection_state, 0..) |*selected, i| {
+                            if (ig.igSelectableBoolPtr(available_assets[i].ptr, selected, 0)) {
+                                self.selected_asset_index = i;
+                                self.initiateAssetFetch(alloc) catch @panic("Failed to fetch asset");
                             }
-                            ig.igEndCombo();
                         }
-                        ig.igEndTabItem();
+                        ig.igEndCombo();
                     }
+                    ig.igEndTabItem();
                 }
 
                 if (ig.igBeginTabItem("Meta", null, 0)) {
