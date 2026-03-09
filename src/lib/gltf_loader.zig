@@ -29,17 +29,55 @@ pub const Vertex = extern struct {
 pub const Mesh = struct {
     name: ?[]const u8,
     primitives: []Primitive,
+
+    pub fn deinit(self: *Mesh) void {
+        for (self.primitives) |*prim| {
+            prim.deinit();
+        }
+    }
 };
 
 pub const Primitive = struct {
+    arena: std.heap.ArenaAllocator,
     binding: sg.Bindings = .{},
     object_count: u32 = 0,
     metallic_factor: f32 = 1.0,
     roughness_factor: f32 = 1.0,
     has_normal_map_data: bool = false,
     has_metallic_roughness_texture: bool = false,
+    //  Need to keep track of these so that we can destroy them later
+    images: std.ArrayList(sg.Image) = .empty,
 
-    pub fn loadVertices(self: *Primitive, alloc: std.mem.Allocator, gltf_prim: *const Gltf.Primitive, gltf: *Gltf) !void {
+    pub fn init(allocator: std.mem.Allocator) Primitive {
+        const arena = std.heap.ArenaAllocator.init(allocator);
+        return Primitive{
+            .arena = arena,
+        };
+    }
+
+    pub fn deinit(self: *Primitive) void {
+        // GPU
+        for (self.binding.vertex_buffers) |buf| {
+            sg.destroyBuffer(buf);
+        }
+        sg.destroyBuffer(self.binding.index_buffer);
+        for (self.binding.views) |view| {
+            sg.destroyView(view);
+        }
+        for (self.binding.samplers) |smp| {
+            sg.destroySampler(smp);
+        }
+        for (self.images.items) |img| {
+            sg.destroyImage(img);
+        }
+        self.images.deinit(self.arena.allocator());
+
+        // CPU
+        self.arena.deinit();
+    }
+
+    pub fn loadVertices(self: *Primitive, gltf_prim: *const Gltf.Primitive, gltf: *Gltf) !void {
+        const alloc = self.arena.allocator();
         var vertices: std.ArrayList(Vertex) = .empty;
         for (gltf_prim.attributes) |attr| {
             switch (attr) {
@@ -106,7 +144,8 @@ pub const Primitive = struct {
         });
     }
 
-    pub fn loadIndices(self: *Primitive, alloc: std.mem.Allocator, gltf_prim: *const Gltf.Primitive, gltf: *Gltf) !void {
+    pub fn loadIndices(self: *Primitive, gltf_prim: *const Gltf.Primitive, gltf: *Gltf) !void {
+        const alloc = self.arena.allocator();
         var indices = std.ArrayList(u16).empty;
         // Read and load indices
         if (gltf_prim.indices) |prim_indices| {
@@ -134,25 +173,21 @@ pub const Primitive = struct {
         self.binding.samplers[shd.SMP_mr_smp] = sg.makeSampler(.{});
     }
 
-    pub fn loadMaterial(self: *Primitive, alloc: std.mem.Allocator, gltf_prim: *const Gltf.Primitive, gltf: *Gltf) !void {
+    pub fn loadMaterial(self: *Primitive, gltf_prim: *const Gltf.Primitive, gltf: *Gltf) !void {
+        const alloc = self.arena.allocator();
         if (gltf_prim.material) |mat_idx| {
             const material = gltf.data.materials[mat_idx];
             const material_name = material.name orelse "(unknown-material-name)";
             self.metallic_factor = material.metallic_roughness.metallic_factor;
             self.roughness_factor = material.metallic_roughness.roughness_factor;
-            // Load base color texture image
+
+            // Load normal map texture image
             var normal_map_texture_image: sg.Image = .{};
             if (material.normal_texture) |tex| {
                 const encoded_bytes = gltf.data.images[gltf.data.textures[tex.index].source.?].data.?;
-                normal_map_texture_image = try makeSgImage(alloc, (try sprint(alloc, "{s} Normal Map Texture", .{material_name})), encoded_bytes);
+                normal_map_texture_image = try imageFromBuffer(alloc, (try sprint(alloc, "{s} Normal Map Texture", .{material_name})), encoded_bytes);
             } else {
-                normal_map_texture_image = sg.makeImage(.{ .label = "Dummy base normal map texture image", .width = 1, .height = 1, .data = init: {
-                    var data = sg.ImageData{};
-                    data.mip_levels[0] = sg.asRange(&[1]u32{
-                        0xFFFF8080,
-                    });
-                    break :init data;
-                } });
+                normal_map_texture_image = dummyImage("Dummy base normal map texture image", 0xFFFF8080);
                 self.has_normal_map_data = false;
             }
             self.binding.views[shd.VIEW_normal_tex] = sg.makeView(.{
@@ -164,15 +199,9 @@ pub const Primitive = struct {
             var base_color_texture_image: sg.Image = .{};
             if (material.metallic_roughness.base_color_texture) |tex| {
                 const encoded_bytes = gltf.data.images[gltf.data.textures[tex.index].source.?].data.?;
-                base_color_texture_image = try makeSgImage(alloc, (try sprint(alloc, "{s} Base Color Texture", .{material_name})), encoded_bytes);
+                base_color_texture_image = try imageFromBuffer(alloc, (try sprint(alloc, "{s} Base Color Texture", .{material_name})), encoded_bytes);
             } else {
-                base_color_texture_image = sg.makeImage(.{ .label = "Dummy base color texture image", .width = 1, .height = 1, .data = init: {
-                    var data = sg.ImageData{};
-                    data.mip_levels[0] = sg.asRange(&[1]u32{
-                        0xFFFFFFFF,
-                    });
-                    break :init data;
-                } });
+                base_color_texture_image = dummyImage("Dummy base color texture image", 0xFFFFFFFF);
             }
             self.binding.views[shd.VIEW_tex] = sg.makeView(.{
                 .label = (try sprint(alloc, "{s} Metallic Roughness Base Texture ", .{material_name})).ptr,
@@ -183,24 +212,25 @@ pub const Primitive = struct {
             var metallic_roughness_texture_image: sg.Image = .{};
             if (material.metallic_roughness.metallic_roughness_texture) |tex| {
                 const encoded_bytes = gltf.data.images[gltf.data.textures[tex.index].source.?].data.?;
-                metallic_roughness_texture_image = try makeSgImage(alloc, (try sprint(alloc, "{s} Metallic Roughness Texture", .{material_name})), encoded_bytes);
+                metallic_roughness_texture_image = try imageFromBuffer(alloc, (try sprint(alloc, "{s} Metallic Roughness Texture", .{material_name})), encoded_bytes);
                 self.has_metallic_roughness_texture = true;
             } else {
-                metallic_roughness_texture_image = sg.makeImage(.{ .label = "Dummy mr texture image", .width = 1, .height = 1, .data = init: {
-                    var data = sg.ImageData{};
-                    data.mip_levels[0] = sg.asRange(&[1]u32{0xFFFFFFFF});
-                    break :init data;
-                } });
+                metallic_roughness_texture_image = dummyImage("Dummy MR texture image", 0xFFFFFFFF);
             }
             self.binding.views[shd.VIEW_mr_tex] = sg.makeView(.{
                 .label = (try sprint(alloc, "{s} Metallic Roughness Texture", .{material_name})).ptr,
                 .texture = .{ .image = metallic_roughness_texture_image },
             });
+
+            // Store for destruction later
+            try self.images.append(alloc, base_color_texture_image);
+            try self.images.append(alloc, normal_map_texture_image);
+            try self.images.append(alloc, metallic_roughness_texture_image);
         }
     }
 };
 
-pub fn makeSgImage(alloc: std.mem.Allocator, label: []const u8, buffer: []const u8) !sg.Image {
+fn imageFromBuffer(alloc: std.mem.Allocator, label: []const u8, buffer: []const u8) !sg.Image {
     var img = try zigimg.Image.fromMemory(alloc, buffer);
     const w: i32 = @intCast(img.width);
     const h: i32 = @intCast(img.height);
@@ -214,6 +244,20 @@ pub fn makeSgImage(alloc: std.mem.Allocator, label: []const u8, buffer: []const 
         .data = init: {
             var data = sg.ImageData{};
             data.mip_levels[0] = sg.asRange(img_pixels);
+            break :init data;
+        },
+    });
+}
+
+fn dummyImage(label: []const u8, pixel_value: u32) sg.Image {
+    return sg.makeImage(.{
+        .label = label.ptr,
+        .width = 1,
+        .height = 1,
+        .pixel_format = .RGBA8,
+        .data = init: {
+            var data = sg.ImageData{};
+            data.mip_levels[0] = sg.asRange(&[1]u32{pixel_value});
             break :init data;
         },
     });

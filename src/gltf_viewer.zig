@@ -46,7 +46,12 @@ const available_assets: [NUM_ASSETS][]const u8 = .{
     "Skeleton_Mage",
 };
 
-pub const GltfViewer = struct {
+const GltfModel = struct {
+    gltf: Gltf,
+    meshes: []Mesh,
+};
+
+const GltfViewer = struct {
     // GLTF Core
     meshes: ?[]Mesh = null,
     gltf: ?Gltf = null,
@@ -82,6 +87,11 @@ pub const GltfViewer = struct {
     light_color: Vec3 = Vec3.ones(),
 
     pub fn loadGlb(self: *GltfViewer, alloc: std.mem.Allocator, range: sfetch.Range) !void {
+        if (self.meshes) |meshes| {
+            for (meshes) |*mesh| {
+                mesh.deinit();
+            }
+        }
         const buffer: [*]align(4) const u8 = @ptrCast(@alignCast(range.ptr.?));
         const slice: []align(4) const u8 = buffer[0..range.size];
         var gltf = Gltf.init(alloc);
@@ -97,10 +107,11 @@ pub const GltfViewer = struct {
 
         for (gltf.data.meshes) |gltf_mesh| {
             for (gltf_mesh.primitives) |gltf_prim| {
-                var prim: Primitive = .{};
-                try prim.loadVertices(alloc, &gltf_prim, &self.gltf.?);
-                try prim.loadIndices(alloc, &gltf_prim, &self.gltf.?);
-                try prim.loadMaterial(alloc, &gltf_prim, &self.gltf.?);
+                // var prim: Primitive = .{ .vertices = undefined,  };
+                var prim: Primitive = .init(alloc);
+                try prim.loadVertices(&gltf_prim, &self.gltf.?);
+                try prim.loadIndices(&gltf_prim, &self.gltf.?);
+                try prim.loadMaterial(&gltf_prim, &self.gltf.?);
                 prim.loadSamplers();
 
                 try primitives.append(alloc, prim);
