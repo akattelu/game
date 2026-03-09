@@ -86,6 +86,16 @@ pub fn build(b: *std.Build) !void {
             .target = .{ .native = .{} },
             .root_app_name = "gltf_viewer",
         },
+        .{
+            .optimize = optimize,
+            .target = .webgpu,
+            .root_app_name = "gltf_viewer",
+        },
+        .{
+            .optimize = optimize,
+            .target = .webgl,
+            .root_app_name = "gltf_viewer",
+        },
     };
     for (variants) |variant| {
         try buildFor(b, variant);
@@ -163,7 +173,7 @@ fn buildWeb(b: *std.Build, root_mod: *std.Build.Module, deps: Dependencies, vari
         .use_filesystem = false,
         .extra_args = &.{
             "-sSTACK_SIZE=2MB",
-            "-sINITIAL_MEMORY=6MB",
+            "-sINITIAL_MEMORY=112MB",
             "-sALLOW_MEMORY_GROWTH=1",
             "-sASSERTIONS",
         },
@@ -303,7 +313,15 @@ fn buildFor(b: *std.Build, variant: BuildVariant) !void {
             });
             const web_artifacts = try buildWeb(b, root_mod, deps, variant, true);
             web_artifacts.dependOn(shaders);
-            b.getInstallStep().dependOn(web_artifacts);
+
+            const copy_assets_dir = b.addInstallDirectory(.{
+                .source_dir = b.path("assets"),
+                .install_dir = .prefix,
+                .install_subdir = "web/assets",
+            });
+            copy_assets_dir.step.dependOn(web_artifacts);
+
+            b.getInstallStep().dependOn(&copy_assets_dir.step);
         },
     }
 }

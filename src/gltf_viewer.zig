@@ -32,7 +32,7 @@ inline fn allocator() std.mem.Allocator {
 }
 
 var st: GltfViewer = .{};
-var sfetch_buffer: [100 * 1024 * 1024]u8 = undefined;
+var sfetch_buffer: [100 * 1024 * 1024]u8 align(4) = undefined;
 
 const NUM_ASSETS = 8;
 const available_assets: [NUM_ASSETS][]const u8 = .{
