@@ -49,7 +49,6 @@ const available_assets: [NUM_ASSETS][]const u8 = .{
 const GltfViewer = struct {
     // GLTF Core
     model: ?GltfModel = null,
-    selected_model_index: usize = 0,
 
     // Asset loader
     assets_selection_state: [NUM_ASSETS]bool = undefined,
@@ -90,12 +89,11 @@ const GltfViewer = struct {
         self.model = try .init(alloc, slice);
     }
 
-    fn vsUniforms(self: *GltfViewer, prim: *const Primitive) shd.VsParams {
+    fn vsUniforms(self: *GltfViewer, prim: *const Primitive, model: Mat4) shd.VsParams {
         const r = self.camera_radius;
         const phi = self.camera_phi;
         const theta = self.camera_theta;
         _ = prim;
-        const model = Mat4.identity();
         return .{
             .view_projection = Mat4.vp(
                 Vec3.new(
@@ -140,28 +138,7 @@ const GltfViewer = struct {
                     const meshes = model.meshes;
                     if (ig.igBeginTabItem("General", null, 0)) {
                         _ = ig.igText("Mesh Count: %d", meshes.len);
-                        _ = ig.igText("Now viewing mesh number: %d", self.selected_model_index);
                         _ = ig.igCheckbox("Apply Texture?", &self.apply_texture);
-                        for (meshes[self.selected_model_index].primitives) |prim| {
-                            // Will run once per primitive but its fine
-                            if (prim.has_normal_map_data) {
-                                _ = ig.igCheckbox("Apply Normal Map?", &self.apply_normal_map);
-                            }
-                            if (prim.has_metallic_roughness_texture) {
-                                _ = ig.igText("Metallic Factor: %.2f", prim.metallic_factor);
-                                _ = ig.igText("Roughness Factor: %.2f", prim.roughness_factor);
-                                _ = ig.igCheckbox("Apply Metallic Roughness Texture?", &self.apply_metallic_roughness_texture);
-                            }
-                        }
-
-                        if (ig.igArrowButton("Previous Mesh", ig.ImGuiDir_Left)) {
-                            if (self.selected_model_index != 0) {
-                                self.selected_model_index = self.selected_model_index - 1;
-                            }
-                        }
-                        if (ig.igArrowButton("Next Mesh", ig.ImGuiDir_Right)) {
-                            self.selected_model_index = @min(self.selected_model_index + 1, meshes.len - 1);
-                        }
                         ig.igEndTabItem();
                     }
 
@@ -303,12 +280,15 @@ export fn frame(userdata: ?*anyopaque) void {
     // Pipeline
     sg.applyPipeline(state.pipeline);
     if (state.model) |model| {
-        const mesh = model.meshes[state.selected_model_index];
-        for (mesh.primitives) |prim| {
-            sg.applyBindings(prim.binding);
-            sg.applyUniforms(shd.UB_vs_params, sg.asRange(&state.vsUniforms(&prim)));
-            sg.applyUniforms(shd.UB_fs_params, sg.asRange(&state.fsUniforms(&prim)));
-            sg.draw(0, prim.object_count, 1);
+        if (model.meshes.len != 0) {
+            for (model.meshes) |mesh| {
+                for (mesh.primitives) |prim| {
+                    sg.applyBindings(prim.binding);
+                    sg.applyUniforms(shd.UB_vs_params, sg.asRange(&state.vsUniforms(&prim, mesh.transform_trs)));
+                    sg.applyUniforms(shd.UB_fs_params, sg.asRange(&state.fsUniforms(&prim)));
+                    sg.draw(0, prim.object_count, 1);
+                }
+            }
         }
     }
 

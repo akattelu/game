@@ -204,6 +204,63 @@ pub const Mat4 = extern struct {
 
         return Mat4.mul(proj, view);
     }
+
+    pub fn scale(s: Vec3) Mat4 {
+        var res = Mat4.identity();
+        res.m[0][0] = s.x;
+        res.m[1][1] = s.y;
+        res.m[2][2] = s.z;
+        return res;
+    }
+
+    /// Converts a unit quaternion [x, y, z, w] into a 4x4 rotation matrix.
+    pub fn fromQuat(q: [4]f32) Mat4 {
+        var res = Mat4.identity();
+
+        const x = q[0];
+        const y = q[1];
+        const z = q[2];
+        const w = q[3];
+
+        // Pre-compute repeated products (each appears in multiple cells)
+        const xx = x * x;
+        const yy = y * y;
+        const zz = z * z;
+        const xy = x * y;
+        const xz = x * z;
+        const yz = y * z;
+        const wx = w * x;
+        const wy = w * y;
+        const wz = w * z;
+
+        // Column 0
+        res.m[0][0] = 1.0 - 2.0 * (yy + zz);
+        res.m[0][1] = 2.0 * (xy + wz);
+        res.m[0][2] = 2.0 * (xz - wy);
+
+        // Column 1
+        res.m[1][0] = 2.0 * (xy - wz);
+        res.m[1][1] = 1.0 - 2.0 * (xx + zz);
+        res.m[1][2] = 2.0 * (yz + wx);
+
+        // Column 2
+        res.m[2][0] = 2.0 * (xz + wy);
+        res.m[2][1] = 2.0 * (yz - wx);
+        res.m[2][2] = 1.0 - 2.0 * (xx + yy);
+
+        // Column 3 and row 3 stay as identity (0,0,0,1)
+        return res;
+    }
+
+    /// Build a local transform matrix from a glTF node's TRS properties.
+    pub fn fromTRS(translation: [3]f32, rotation: [4]f32, s: [3]f32) Mat4 {
+        const t_mat = Mat4.translate(Vec3.new(translation[0], translation[1], translation[2]));
+        const r_mat = Mat4.fromQuat(rotation);
+        const s_mat = Mat4.scale(Vec3.new(s[0], s[1], s[2]));
+
+        // T * R * S: scale the vertex first, then rotate, then translate
+        return Mat4.mul(Mat4.mul(t_mat, r_mat), s_mat);
+    }
 };
 
 test "Vec3.zero" {
