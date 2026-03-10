@@ -30,21 +30,34 @@ pub const GltfModel = struct {
     gltf: Gltf,
     meshes: []Mesh,
 
+    pub fn init(alloc: std.mem.Allocator, buffer: []align(4) const u8) !GltfModel {
+        var gltf = Gltf.init(alloc);
+        try gltf.parse(buffer);
+        var model: GltfModel = .{
+            .gltf = gltf,
+            .meshes = undefined,
+        };
+        try model.initMeshes(alloc);
+        try model.initNodes(alloc);
+        return model;
+    }
+
     pub fn deinit(self: *GltfModel) void {
         for (self.meshes) |*mesh| {
             mesh.deinit();
         }
     }
+
     pub fn initMeshes(self: *GltfModel, alloc: std.mem.Allocator) !void {
         var primitives: std.ArrayList(Primitive) = .empty;
         var meshes: std.ArrayList(Mesh) = .empty;
 
         for (self.gltf.data.meshes) |gltf_mesh| {
-            for (gltf_mesh.primitives) |gltf_prim| {
+            for (gltf_mesh.primitives) |*gltf_prim| {
                 var prim: Primitive = .init(alloc);
-                try prim.loadVertices(&gltf_prim, &self.gltf);
-                try prim.loadIndices(&gltf_prim, &self.gltf);
-                try prim.loadMaterial(&gltf_prim, &self.gltf);
+                try prim.loadVertices(gltf_prim, &self.gltf);
+                try prim.loadIndices(gltf_prim, &self.gltf);
+                try prim.loadMaterial(gltf_prim, &self.gltf);
                 try prim.loadSamplers();
 
                 try primitives.append(alloc, prim);
@@ -55,6 +68,16 @@ pub const GltfModel = struct {
             try meshes.append(alloc, mesh);
         }
         self.meshes = try meshes.toOwnedSlice(alloc);
+    }
+
+    pub fn initNodes(self: *GltfModel, alloc: std.mem.Allocator) !void {
+        _ = alloc;
+        for (self.gltf.data.nodes) |node| {
+            print("Node name: {?s}\n", .{node.name});
+            if (node.mesh) |mesh_id| {
+                print("Correlated mesh name{?s}\n", .{self.meshes[mesh_id].name});
+            }
+        }
     }
 };
 pub const Mesh = struct {

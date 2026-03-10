@@ -87,14 +87,7 @@ const GltfViewer = struct {
         const buffer: [*]align(4) const u8 = @ptrCast(@alignCast(range.ptr.?));
         const slice: []align(4) const u8 = buffer[0..range.size];
 
-        var gltf = Gltf.init(alloc);
-        try gltf.parse(slice);
-
-        self.model = .{
-            .gltf = gltf,
-            .meshes = undefined,
-        };
-        try self.model.?.initMeshes(alloc);
+        self.model = try .init(alloc, slice);
     }
 
     fn vsUniforms(self: *GltfViewer, prim: *const Primitive) shd.VsParams {
