@@ -50,6 +50,7 @@ const available_assets: [NUM_ASSETS][]const u8 = .{
 const GltfViewer = struct {
     // GLTF Core
     model: ?GltfModel = null,
+    scene_root_index: ?usize = null,
 
     // Asset loader
     assets_selection_state: [NUM_ASSETS]bool = undefined,
@@ -88,6 +89,7 @@ const GltfViewer = struct {
         const slice: []align(4) const u8 = buffer[0..range.size];
 
         self.model = try .init(alloc, slice);
+        self.scene_root_index = 0;
     }
 
     fn vsUniforms(self: *GltfViewer, prim: *const Primitive, model: Mat4) shd.VsParams {
@@ -138,6 +140,13 @@ const GltfViewer = struct {
                 if (self.model) |_| { // Only if mesh is already loaded
                     if (ig.igBeginTabItem("General", null, 0)) {
                         _ = ig.igCheckbox("Apply Texture?", &self.apply_texture);
+                        if (self.scene_root_index) |root_idx| {
+                            _ = ig.igText("Viewing root: %d", root_idx);
+                            if (ig.igButton("Prev root")) {}
+                            if (ig.igButton("Next root")) {
+                                self.scene_root_index = @min(root_idx + 1, self.model.?.scene_roots.len - 1);
+                            }
+                        }
                         ig.igEndTabItem();
                     }
 
@@ -173,7 +182,7 @@ const GltfViewer = struct {
                 if (ig.igBeginTabItem("Camera", null, 0)) {
                     _ = ig.igSliderFloat("Camera Theta", &self.camera_theta, 0.0, 2 * std.math.pi);
                     _ = ig.igSliderFloat("Camera Phi", &self.camera_phi, 0.0, 2 * std.math.pi);
-                    _ = ig.igSliderFloatEx("Camera Radius", &self.camera_radius, 1.0, 900.0, "%2f", ig.ImGuiSliderFlags_Logarithmic);
+                    _ = ig.igSliderFloatEx("Camera Radius", &self.camera_radius, 0.00001, 1000.0, "%2f", ig.ImGuiSliderFlags_Logarithmic);
                     ig.igEndTabItem();
                 }
                 ig.igEndTabBar();
@@ -280,8 +289,9 @@ export fn frame(userdata: ?*anyopaque) void {
     sg.applyPipeline(state.pipeline);
     if (state.model) |model| {
         var node_queue = std.ArrayList(Node).empty;
-        if (model.root_node) |root| {
-            node_queue.append(allocator(), root) catch {};
+        if (state.scene_root_index) |root_idx| {
+            const root = model.scene_roots[root_idx];
+            node_queue.append(arena.allocator(), root) catch {};
         }
         while (node_queue.pop()) |node| {
             if (node.mesh) |mesh| {
@@ -293,7 +303,7 @@ export fn frame(userdata: ?*anyopaque) void {
                 }
             }
             for (node.children) |child| {
-                node_queue.append(allocator(), child) catch {};
+                node_queue.append(arena.allocator(), child) catch {};
             }
         }
     }

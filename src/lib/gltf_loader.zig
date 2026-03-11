@@ -43,19 +43,19 @@ pub const Node = struct {
 
 pub const GltfModel = struct {
     gltf: Gltf,
-    root_node: ?Node = null,
+    scene_roots: []Node = std.ArrayList(Node).empty.items,
 
     pub fn init(alloc: std.mem.Allocator, buffer: []align(4) const u8) !GltfModel {
         var gltf = Gltf.init(alloc);
         try gltf.parse(buffer);
-        var model: GltfModel = .{ .gltf = gltf, .root_node = null };
+        var model: GltfModel = .{ .gltf = gltf };
         try model.initTree(alloc);
         return model;
     }
 
     pub fn deinit(self: *GltfModel) void {
-        if (self.root_node) |*node| {
-            node.deinit();
+        for (self.scene_roots) |*root| {
+            root.deinit();
         }
     }
 
@@ -110,9 +110,14 @@ pub const GltfModel = struct {
 
     pub fn initTree(self: *GltfModel, alloc: std.mem.Allocator) !void {
         const scene = self.gltf.data.scenes[self.gltf.data.scene orelse 0];
-        const scene_root_node_idx = scene.nodes.?[0];
 
-        self.root_node = try self.initNode(alloc, scene_root_node_idx, Mat4.identity());
+        var roots: std.ArrayList(Node) = .empty;
+        if (scene.nodes) |nodes| {
+            for (nodes) |node_idx| {
+                try roots.append(alloc, try self.initNode(alloc, node_idx, Mat4.identity()));
+            }
+        }
+        self.scene_roots = try roots.toOwnedSlice(alloc);
     }
 };
 
