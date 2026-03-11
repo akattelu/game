@@ -28,10 +28,17 @@ pub const Vertex = extern struct {
     weight: Vec4,
 };
 
+pub const Skin = struct {
+    name: ?[]const u8,
+    joint_node_indices: []usize,
+    inverse_bind_matrices: []Mat4,
+};
+
 pub const Node = struct {
     children: []Node,
     mesh: ?Mesh,
     transform_trs: Mat4,
+    skin: ?Skin,
 
     pub fn deinit(self: *Node) void {
         for (self.children) |*child| {
@@ -61,7 +68,7 @@ pub const GltfModel = struct {
         }
     }
 
-    pub fn loadMesh(self: *GltfModel, alloc: std.mem.Allocator, mesh_idx: usize) !Mesh {
+    fn loadMesh(self: *GltfModel, alloc: std.mem.Allocator, mesh_idx: usize) !Mesh {
         const gltf_mesh = self.gltf.data.meshes[mesh_idx];
         var primitives: std.ArrayList(Primitive) = .empty;
         for (gltf_mesh.primitives) |*gltf_prim| {
@@ -79,10 +86,30 @@ pub const GltfModel = struct {
         return mesh;
     }
 
+    fn loadSkin(self: *GltfModel, alloc: std.mem.Allocator, skin_idx: usize) !Skin {
+        const gltf_skin = self.gltf.data.skins[skin_idx];
+        var inverse_bind_matrices: std.ArrayList(Mat4) = .empty;
+        if (gltf_skin.inverse_bind_matrices) |ibm| {
+            const accessor = self.gltf.data.accessors[ibm];
+            var it = accessor.iterator(f32, &self.gltf, self.gltf.glb_binary.?);
+            while (it.next()) |v| {
+                const mat = Mat4.fromArray(v[0..16].*);
+                try inverse_bind_matrices.append(alloc, mat);
+            }
+        }
+        const skin: Skin = .{
+            .name = gltf_skin.name,
+            .joint_node_indices = gltf_skin.joints,
+            .inverse_bind_matrices = try inverse_bind_matrices.toOwnedSlice(alloc),
+        };
+        return skin;
+    }
+
     fn initNode(self: *GltfModel, alloc: std.mem.Allocator, node_idx: usize, trs: Mat4) !Node {
         const gltf_node: *Gltf.Node = &self.gltf.data.nodes[node_idx];
         var children: std.ArrayList(Node) = .empty;
         var mesh: ?Mesh = null;
+        var skin: ?Skin = null;
         var transform_trs = Mat4.identity();
 
         // Apply local transform
@@ -96,6 +123,9 @@ pub const GltfModel = struct {
         if (gltf_node.mesh) |mesh_idx| {
             mesh = try self.loadMesh(alloc, mesh_idx);
         }
+        if (gltf_node.skin) |skin_idx| {
+            skin = try self.loadSkin(alloc, skin_idx);
+        }
 
         const world = Mat4.mul(transform_trs, trs);
         // Recursively initialize children
@@ -106,6 +136,7 @@ pub const GltfModel = struct {
         return Node{
             .children = try children.toOwnedSlice(alloc),
             .mesh = mesh,
+            .skin = skin,
             .transform_trs = world,
         };
     }

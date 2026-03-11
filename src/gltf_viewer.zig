@@ -35,16 +35,17 @@ inline fn allocator() std.mem.Allocator {
 var st: GltfViewer = .{};
 var sfetch_buffer: [100 * 1024 * 1024]u8 align(4) = undefined;
 
-const NUM_ASSETS = 8;
+const NUM_ASSETS = 9;
 const available_assets: [NUM_ASSETS][]const u8 = .{
-    "CompareMetallic",
-    "CompareNormal",
-    "CompareRoughness",
-    "NormalTangentMirrorTest",
-    "Skely",
-    "StairsXL",
-    "street",
-    "Skeleton_Mage",
+    "CompareMetallic.glb",
+    "CompareNormal.glb",
+    "CompareRoughness.glb",
+    "NormalTangentMirrorTest.glb",
+    "Skely.glb",
+    "StairsXL.glb",
+    "street.glb",
+    "Skeleton_Mage.glb",
+    "CesiumMilkTruck.glb",
 };
 
 const GltfViewer = struct {
@@ -193,7 +194,7 @@ const GltfViewer = struct {
 
     fn initiateAssetFetch(self: *GltfViewer, alloc: std.mem.Allocator) !void {
         if (self.selected_asset_index) |idx| {
-            const path = try std.fmt.allocPrintSentinel(alloc, "assets/{s}.glb", .{available_assets[idx]}, 0);
+            const path = try std.fmt.allocPrintSentinel(alloc, "assets/{s}", .{available_assets[idx]}, 0);
             std.debug.assert(sfetch.valid());
             _ = sfetch.send(.{
                 .path = path.ptr,
