@@ -245,7 +245,7 @@ export fn init(userdata: ?*anyopaque) void {
 
     state.pipeline = sg.makePipeline(
         .{
-            .label = "CPU Noise and Normal Calculation Pipeline",
+            .label = "GLTF Viewer Pipeline",
             .shader = sg.makeShader(shd.gltfShaderDesc(sg.queryBackend())),
             .layout = init: {
                 var l = sg.VertexLayoutState{};
@@ -254,6 +254,8 @@ export fn init(userdata: ?*anyopaque) void {
                 l.attrs[shd.ATTR_gltf_texcoord0].format = .SHORT2N;
                 l.attrs[shd.ATTR_gltf_normal].format = .FLOAT3;
                 l.attrs[shd.ATTR_gltf_tangent].format = .FLOAT4;
+                l.attrs[shd.ATTR_gltf_joints].format = .FLOAT4;
+                l.attrs[shd.ATTR_gltf_weights].format = .FLOAT4;
                 break :init l;
             },
             .index_type = .UINT16,

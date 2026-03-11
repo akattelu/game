@@ -24,6 +24,8 @@ pub const Vertex = extern struct {
     v: i16,
     normal: Vec3,
     tangent: Vec4,
+    joint: Vec4,
+    weight: Vec4,
 };
 
 pub const Node = struct {
@@ -189,6 +191,8 @@ pub const Primitive = struct {
                             .u = 0,
                             .v = 0,
                             .tangent = Vec4.new(0, 0, 0, 0),
+                            .joint = Vec4.new(0, 0, 0, 0),
+                            .weight = Vec4.new(0, 0, 0, 0),
                         });
                     }
                 },
@@ -226,7 +230,18 @@ pub const Primitive = struct {
                         vertices.items[i].v = @intFromFloat(@round(std.math.clamp(uv[1], -1.0, 1.0) * 32767.0));
                     }
                 },
-                else => {},
+                .joints => |joints| {
+                    // for now for joints just print the component type
+                    const accessor = gltf.data.accessors[joints];
+                    const component_type = accessor.component_type;
+                    print("Joints component type: {s}\n", .{@tagName(component_type)});
+                },
+                .weights => |weights| {
+                    // for now for weights just print the component type
+                    const accessor = gltf.data.accessors[weights];
+                    const component_type = accessor.component_type;
+                    print("Weights component type: {s}\n", .{@tagName(component_type)});
+                },
             }
         }
         const owned_vertices = try vertices.toOwnedSlice(alloc);
