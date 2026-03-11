@@ -13,7 +13,7 @@ in vec4 color0;
 in vec2 texcoord0;
 in vec3 normal;
 in vec4 tangent;
-in vec4 joints;
+in uvec4 joints;
 in vec4 weights;
 
 

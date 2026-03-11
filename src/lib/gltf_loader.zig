@@ -24,7 +24,7 @@ pub const Vertex = extern struct {
     v: i16,
     normal: Vec3,
     tangent: Vec4,
-    joint: Vec4,
+    joint: [4]u8,
     weight: Vec4,
 };
 
@@ -191,7 +191,7 @@ pub const Primitive = struct {
                             .u = 0,
                             .v = 0,
                             .tangent = Vec4.new(0, 0, 0, 0),
-                            .joint = Vec4.new(0, 0, 0, 0),
+                            .joint = [4]u8{ 0, 0, 0, 0 },
                             .weight = Vec4.new(0, 0, 0, 0),
                         });
                     }
@@ -216,8 +216,6 @@ pub const Primitive = struct {
                     const accessor = gltf.data.accessors[tangent];
                     var it = accessor.iterator(f32, gltf, gltf.glb_binary.?);
                     var i: u32 = 0;
-                    // print accessor component type
-                    std.debug.print("tangent accessor component type: {any}\n", .{accessor.component_type});
                     while (it.next()) |n| : (i += 1) {
                         vertices.items[i].tangent = Vec4.new(n[0], n[1], n[2], n[3]);
                     }
@@ -235,14 +233,20 @@ pub const Primitive = struct {
                 .joints => |joints| {
                     // for now for joints just print the component type
                     const accessor = gltf.data.accessors[joints];
-                    const component_type = accessor.component_type;
-                    print("Joints component type: {s}\n", .{@tagName(component_type)});
+                    var it = accessor.iterator(u8, gltf, gltf.glb_binary.?);
+                    var i: u32 = 0;
+                    while (it.next()) |n| : (i += 1) {
+                        vertices.items[i].joint = [4]u8{ n[0], n[1], n[2], n[3] };
+                    }
                 },
                 .weights => |weights| {
                     // for now for weights just print the component type
                     const accessor = gltf.data.accessors[weights];
-                    const component_type = accessor.component_type;
-                    print("Weights component type: {s}\n", .{@tagName(component_type)});
+                    var it = accessor.iterator(f32, gltf, gltf.glb_binary.?);
+                    var i: u32 = 0;
+                    while (it.next()) |n| : (i += 1) {
+                        vertices.items[i].weight = Vec4.new(n[0], n[1], n[2], n[3]);
+                    }
                 },
             }
         }

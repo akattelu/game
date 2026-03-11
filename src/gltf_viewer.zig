@@ -254,7 +254,7 @@ export fn init(userdata: ?*anyopaque) void {
                 l.attrs[shd.ATTR_gltf_texcoord0].format = .SHORT2N;
                 l.attrs[shd.ATTR_gltf_normal].format = .FLOAT3;
                 l.attrs[shd.ATTR_gltf_tangent].format = .FLOAT4;
-                l.attrs[shd.ATTR_gltf_joints].format = .FLOAT4;
+                l.attrs[shd.ATTR_gltf_joints].format = .UBYTE4;
                 l.attrs[shd.ATTR_gltf_weights].format = .FLOAT4;
                 break :init l;
             },
