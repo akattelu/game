@@ -72,8 +72,8 @@ const GltfViewer = struct {
 
     // Lighting
     apply_texture: bool = true,
-    apply_normal_map: bool = false,
-    apply_metallic_roughness_texture: bool = false,
+    apply_normal_map: bool = true,
+    apply_metallic_roughness_texture: bool = true,
     apply_lighting: bool = true,
     ambient_intensity: f32 = 0.2,
     normal_cell_spacing: f32 = 2.0,

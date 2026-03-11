@@ -216,6 +216,8 @@ pub const Primitive = struct {
                     const accessor = gltf.data.accessors[tangent];
                     var it = accessor.iterator(f32, gltf, gltf.glb_binary.?);
                     var i: u32 = 0;
+                    // print accessor component type
+                    std.debug.print("tangent accessor component type: {any}\n", .{accessor.component_type});
                     while (it.next()) |n| : (i += 1) {
                         vertices.items[i].tangent = Vec4.new(n[0], n[1], n[2], n[3]);
                     }
