@@ -26,6 +26,7 @@ const gltf_loader = @import("lib/gltf_loader.zig");
 const GltfModel = gltf_loader.GltfModel;
 const Vertex = gltf_loader.Vertex;
 const Primitive = gltf_loader.Primitive;
+const Node = gltf_loader.Node;
 
 inline fn allocator() std.mem.Allocator {
     return if (builtin.cpu.arch.isWasm()) std.heap.c_allocator else std.heap.smp_allocator;
@@ -134,10 +135,8 @@ const GltfViewer = struct {
         }
         if (ig.igBegin("GLTF/GLB Viewer", &self.imgui_window_open, ig.ImGuiWindowFlags_AlwaysAutoResize)) {
             if (ig.igBeginTabBar("Settings", 0)) {
-                if (self.model) |model| { // Only if mesh is already loaded
-                    const meshes = model.meshes;
+                if (self.model) |_| { // Only if mesh is already loaded
                     if (ig.igBeginTabItem("General", null, 0)) {
-                        _ = ig.igText("Mesh Count: %d", meshes.len);
                         _ = ig.igCheckbox("Apply Texture?", &self.apply_texture);
                         ig.igEndTabItem();
                     }
@@ -280,14 +279,21 @@ export fn frame(userdata: ?*anyopaque) void {
     // Pipeline
     sg.applyPipeline(state.pipeline);
     if (state.model) |model| {
-        if (model.meshes.len != 0) {
-            for (model.meshes) |mesh| {
+        var node_queue = std.ArrayList(Node).empty;
+        if (model.root_node) |root| {
+            node_queue.append(allocator(), root) catch {};
+        }
+        while (node_queue.pop()) |node| {
+            if (node.mesh) |mesh| {
                 for (mesh.primitives) |prim| {
                     sg.applyBindings(prim.binding);
-                    sg.applyUniforms(shd.UB_vs_params, sg.asRange(&state.vsUniforms(&prim, mesh.transform_trs)));
+                    sg.applyUniforms(shd.UB_vs_params, sg.asRange(&state.vsUniforms(&prim, node.transform_trs)));
                     sg.applyUniforms(shd.UB_fs_params, sg.asRange(&state.fsUniforms(&prim)));
                     sg.draw(0, prim.object_count, 1);
                 }
+            }
+            for (node.children) |child| {
+                node_queue.append(allocator(), child) catch {};
             }
         }
     }

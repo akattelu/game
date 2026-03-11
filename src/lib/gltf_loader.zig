@@ -26,81 +26,99 @@ pub const Vertex = extern struct {
     tangent: Vec4,
 };
 
-const Node = struct {
-    children: []*Node,
+pub const Node = struct {
+    children: []Node,
     mesh: ?Mesh,
     transform_trs: Mat4,
+
+    pub fn deinit(self: *Node) void {
+        for (self.children) |*child| {
+            child.deinit();
+        }
+        if (self.mesh) |*mesh| {
+            mesh.deinit();
+        }
+    }
 };
 
 pub const GltfModel = struct {
     gltf: Gltf,
     root_node: ?Node = null,
-    meshes: []Mesh,
 
     pub fn init(alloc: std.mem.Allocator, buffer: []align(4) const u8) !GltfModel {
         var gltf = Gltf.init(alloc);
         try gltf.parse(buffer);
-        var model: GltfModel = .{ .gltf = gltf, .meshes = undefined };
-        try model.initMeshes(alloc);
+        var model: GltfModel = .{ .gltf = gltf, .root_node = null };
+        try model.initTree(alloc);
         return model;
     }
 
     pub fn deinit(self: *GltfModel) void {
-        for (self.meshes) |*mesh| {
-            mesh.deinit();
+        if (self.root_node) |*node| {
+            node.deinit();
         }
     }
 
-    pub fn initMeshes(self: *GltfModel, alloc: std.mem.Allocator) !void {
-        var meshes: std.ArrayList(Mesh) = .empty;
+    pub fn loadMesh(self: *GltfModel, alloc: std.mem.Allocator, mesh_idx: usize) !Mesh {
+        const gltf_mesh = self.gltf.data.meshes[mesh_idx];
+        var primitives: std.ArrayList(Primitive) = .empty;
+        for (gltf_mesh.primitives) |*gltf_prim| {
+            var prim: Primitive = .init(alloc);
+            try prim.loadVertices(gltf_prim, &self.gltf);
+            try prim.loadIndices(gltf_prim, &self.gltf);
+            try prim.loadMaterial(gltf_prim, &self.gltf);
+            try prim.loadSamplers();
+            try primitives.append(alloc, prim);
+        }
+        const mesh: Mesh = .{
+            .name = gltf_mesh.name,
+            .primitives = try primitives.toOwnedSlice(alloc),
+        };
+        return mesh;
+    }
+
+    fn initNode(self: *GltfModel, alloc: std.mem.Allocator, node_idx: usize, trs: Mat4) !Node {
+        const gltf_node: *Gltf.Node = &self.gltf.data.nodes[node_idx];
+        var children: std.ArrayList(Node) = .empty;
+        var mesh: ?Mesh = null;
+        var transform_trs = Mat4.identity();
+
+        // Apply local transform
+        if (gltf_node.matrix) |matrix| {
+            transform_trs = .fromArray(matrix);
+        } else {
+            transform_trs = Mat4.fromTRS(gltf_node.translation, gltf_node.rotation, gltf_node.scale);
+        }
+
+        // Apply mesh
+        if (gltf_node.mesh) |mesh_idx| {
+            mesh = try self.loadMesh(alloc, mesh_idx);
+        }
+
+        const world = Mat4.mul(transform_trs, trs);
+        // Recursively initialize children
+        for (gltf_node.children) |child_idx| {
+            try children.append(alloc, try self.initNode(alloc, child_idx, world));
+        }
+
+        return Node{
+            .children = try children.toOwnedSlice(alloc),
+            .mesh = mesh,
+            .transform_trs = world,
+        };
+    }
+
+    pub fn initTree(self: *GltfModel, alloc: std.mem.Allocator) !void {
         const scene = self.gltf.data.scenes[self.gltf.data.scene orelse 0];
         const scene_root_node_idx = scene.nodes.?[0];
-        const root_node: *Gltf.Node = &self.gltf.data.nodes[scene_root_node_idx];
 
-        var node_queue: std.ArrayList(*Gltf.Node) = .empty;
-        try node_queue.append(alloc, root_node);
-
-        while (node_queue.pop()) |node_ptr| {
-            const children = node_ptr.children;
-            for (children) |child_idx| {
-                const child_node_ptr: *Gltf.Node = &self.gltf.data.nodes[child_idx];
-                try node_queue.append(alloc, child_node_ptr);
-            }
-
-            print("Node name: {?s}\n", .{node_ptr.name});
-            print("Node has mesh: {any}\n", .{node_ptr.mesh == null});
-            if (node_ptr.mesh) |mesh_idx| {
-                const gltf_mesh = self.gltf.data.meshes[mesh_idx];
-                var primitives: std.ArrayList(Primitive) = .empty;
-                for (gltf_mesh.primitives) |*gltf_prim| {
-                    var prim: Primitive = .init(alloc);
-                    try prim.loadVertices(gltf_prim, &self.gltf);
-                    try prim.loadIndices(gltf_prim, &self.gltf);
-                    try prim.loadMaterial(gltf_prim, &self.gltf);
-                    try prim.loadSamplers();
-                    try primitives.append(alloc, prim);
-                }
-                const owned_primitives = try primitives.toOwnedSlice(alloc);
-                const transform_trs = Mat4.fromTRS(node_ptr.translation, node_ptr.rotation, node_ptr.scale);
-                print("Mesh transform: {any}\n", .{transform_trs});
-                print("Mesh transform matrix: {any}\n", .{node_ptr.matrix});
-
-                const mesh: Mesh = .{
-                    .name = gltf_mesh.name,
-                    .primitives = owned_primitives,
-                    .transform_trs = transform_trs,
-                };
-                try meshes.append(alloc, mesh);
-            }
-        }
-
-        self.meshes = try meshes.toOwnedSlice(alloc);
+        self.root_node = try self.initNode(alloc, scene_root_node_idx, Mat4.identity());
     }
 };
+
 pub const Mesh = struct {
     name: ?[]const u8,
     primitives: []Primitive,
-    transform_trs: Mat4,
 
     pub fn deinit(self: *Mesh) void {
         for (self.primitives) |*prim| {

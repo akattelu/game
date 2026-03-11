@@ -261,6 +261,18 @@ pub const Mat4 = extern struct {
         // T * R * S: scale the vertex first, then rotate, then translate
         return Mat4.mul(Mat4.mul(t_mat, r_mat), s_mat);
     }
+
+    pub fn fromArray(matrix: [16]f32) Mat4 {
+        const m = Mat4{
+            .m = .{
+                .{ matrix[0], matrix[1], matrix[2], matrix[3] },
+                .{ matrix[4], matrix[5], matrix[6], matrix[7] },
+                .{ matrix[8], matrix[9], matrix[10], matrix[11] },
+                .{ matrix[12], matrix[13], matrix[14], matrix[15] },
+            },
+        };
+        return m;
+    }
 };
 
 test "Vec3.zero" {
