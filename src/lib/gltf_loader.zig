@@ -2,18 +2,17 @@ const std = @import("std");
 const print = std.debug.print;
 const sprint = std.fmt.allocPrint;
 
+const Gltf = @import("zgltf").Gltf;
 const sokol = @import("sokol");
 const sg = sokol.gfx;
-
-const Gltf = @import("zgltf").Gltf;
 const zigimg = @import("zigimg");
 
+const shd = @import("../shaders/gltf.glsl.zig");
 const math = @import("math.zig");
 const Mat4 = math.Mat4;
 const Vec3 = math.Vec3;
 const Vec4 = math.Vec4;
 const util = @import("util.zig");
-const shd = @import("../shaders/gltf.glsl.zig");
 
 pub const Vertex = extern struct {
     x: f32,
@@ -35,47 +34,47 @@ pub const Skin = struct {
 };
 
 pub const Node = struct {
-    children: []Node,
+    children: []*Node,
     mesh: ?Mesh,
-    transform_trs: Mat4,
     skin: ?Skin,
+    local_trs_transform: Mat4,
+    accumulated_transform: Mat4,
 
-    pub fn deinit(self: *Node) void {
-        for (self.children) |*child| {
-            child.deinit();
+    /// Does not populate children recursively.
+    fn init(alloc: std.mem.Allocator, node_idx: usize, gltf: *Gltf) !Node {
+        const gltf_node = gltf.data.nodes[node_idx];
+        var children: std.ArrayList(*Node) = .empty;
+        var mesh: ?Mesh = null;
+        var skin: ?Skin = null;
+        var transform_trs = Mat4.identity();
+
+        // Apply local transform
+        if (gltf_node.matrix) |matrix| {
+            transform_trs = .fromArray(matrix);
+        } else {
+            transform_trs = Mat4.fromTRS(gltf_node.translation, gltf_node.rotation, gltf_node.scale);
         }
-        if (self.mesh) |*mesh| {
-            mesh.deinit();
-        }
-    }
-};
 
-pub const GltfModel = struct {
-    gltf: Gltf,
-    scene_roots: []Node = std.ArrayList(Node).empty.items,
+        if (gltf_node.mesh) |mesh_idx| mesh = try loadMesh(alloc, mesh_idx, gltf); // Apply mesh
+        if (gltf_node.skin) |skin_idx| skin = try loadSkin(alloc, skin_idx, gltf); // Apply skin
 
-    pub fn init(alloc: std.mem.Allocator, buffer: []align(4) const u8) !GltfModel {
-        var gltf = Gltf.init(alloc);
-        try gltf.parse(buffer);
-        var model: GltfModel = .{ .gltf = gltf };
-        try model.initTree(alloc);
-        return model;
+        return Node{
+            .children = try children.toOwnedSlice(alloc),
+            .mesh = mesh,
+            .skin = skin,
+            .local_trs_transform = transform_trs,
+            .accumulated_transform = transform_trs,
+        };
     }
 
-    pub fn deinit(self: *GltfModel) void {
-        for (self.scene_roots) |*root| {
-            root.deinit();
-        }
-    }
-
-    fn loadMesh(self: *GltfModel, alloc: std.mem.Allocator, mesh_idx: usize) !Mesh {
-        const gltf_mesh = self.gltf.data.meshes[mesh_idx];
+    fn loadMesh(alloc: std.mem.Allocator, mesh_idx: usize, gltf: *Gltf) !Mesh {
+        const gltf_mesh = gltf.data.meshes[mesh_idx];
         var primitives: std.ArrayList(Primitive) = .empty;
         for (gltf_mesh.primitives) |*gltf_prim| {
             var prim: Primitive = .init(alloc);
-            try prim.loadVertices(gltf_prim, &self.gltf);
-            try prim.loadIndices(gltf_prim, &self.gltf);
-            try prim.loadMaterial(gltf_prim, &self.gltf);
+            try prim.loadVertices(gltf_prim, gltf);
+            try prim.loadIndices(gltf_prim, gltf);
+            try prim.loadMaterial(gltf_prim, gltf);
             try prim.loadSamplers();
             try primitives.append(alloc, prim);
         }
@@ -86,12 +85,12 @@ pub const GltfModel = struct {
         return mesh;
     }
 
-    fn loadSkin(self: *GltfModel, alloc: std.mem.Allocator, skin_idx: usize) !Skin {
-        const gltf_skin = self.gltf.data.skins[skin_idx];
+    fn loadSkin(alloc: std.mem.Allocator, skin_idx: usize, gltf: *Gltf) !Skin {
+        const gltf_skin = gltf.data.skins[skin_idx];
         var inverse_bind_matrices: std.ArrayList(Mat4) = .empty;
         if (gltf_skin.inverse_bind_matrices) |ibm| {
-            const accessor = self.gltf.data.accessors[ibm];
-            var it = accessor.iterator(f32, &self.gltf, self.gltf.glb_binary.?);
+            const accessor = gltf.data.accessors[ibm];
+            var it = accessor.iterator(f32, gltf, gltf.glb_binary.?);
             while (it.next()) |v| {
                 const mat = Mat4.fromArray(v[0..16].*);
                 try inverse_bind_matrices.append(alloc, mat);
@@ -105,52 +104,96 @@ pub const GltfModel = struct {
         return skin;
     }
 
-    fn initNode(self: *GltfModel, alloc: std.mem.Allocator, node_idx: usize, trs: Mat4) !Node {
-        const gltf_node: *Gltf.Node = &self.gltf.data.nodes[node_idx];
-        var children: std.ArrayList(Node) = .empty;
-        var mesh: ?Mesh = null;
-        var skin: ?Skin = null;
-        var transform_trs = Mat4.identity();
+    pub fn deinit(self: *Node) void {
+        // Ignore children deliberately
+        if (self.mesh) |*mesh| {
+            mesh.deinit();
+        }
+    }
+};
 
-        // Apply local transform
-        if (gltf_node.matrix) |matrix| {
-            transform_trs = .fromArray(matrix);
-        } else {
-            transform_trs = Mat4.fromTRS(gltf_node.translation, gltf_node.rotation, gltf_node.scale);
+pub const SkeletonTree = struct {
+    nodes: []Node,
+
+    pub fn init(alloc: std.mem.Allocator, gltf: *Gltf) !SkeletonTree {
+        var nodes: std.ArrayList(Node) = .empty;
+        for (gltf.data.nodes, 0..) |_, node_idx| {
+            const node = try Node.init(alloc, node_idx, gltf);
+            try nodes.append(alloc, node);
         }
 
-        // Apply mesh
-        if (gltf_node.mesh) |mesh_idx| {
-            mesh = try self.loadMesh(alloc, mesh_idx);
-        }
-        if (gltf_node.skin) |skin_idx| {
-            skin = try self.loadSkin(alloc, skin_idx);
-        }
-
-        const world = Mat4.mul(transform_trs, trs);
-        // Recursively initialize children
-        for (gltf_node.children) |child_idx| {
-            try children.append(alloc, try self.initNode(alloc, child_idx, world));
-        }
-
-        return Node{
-            .children = try children.toOwnedSlice(alloc),
-            .mesh = mesh,
-            .skin = skin,
-            .transform_trs = world,
+        var tree: SkeletonTree = .{
+            .nodes = try nodes.toOwnedSlice(alloc),
         };
+        try tree.populateChildren(alloc, gltf);
+        return tree;
+    }
+
+    fn populateChildren(self: *SkeletonTree, alloc: std.mem.Allocator, gltf: *Gltf) !void {
+        for (self.nodes, 0..) |*node, idx| {
+            const gltf_node = gltf.data.nodes[idx];
+            if (gltf_node.children.len > 0) {
+                var children_pointers: std.ArrayList(*Node) = .empty;
+                for (gltf_node.children) |child_idx| {
+                    var child_node = self.nodes[child_idx];
+                    try children_pointers.append(alloc, &child_node);
+                }
+                node.children = try children_pointers.toOwnedSlice(alloc);
+            }
+        }
+    }
+
+    fn getJointPalette(self: *SkeletonTree, alloc: std.mem.Allocator) ![]Mat4 {
+        var joint_palette: std.ArrayList(Mat4) = .empty;
+        for (self.nodes, 0..) |node, idx| {
+            // joint_palette[i] = global_transform(joint[i]) * inverse_bind_matrix[i]
+            if (node.skin) |skin| {
+                // For animation we will need to accumulate this per frame
+                const bind_matrix = Mat4.mul(node.accumulated_transform, skin.inverse_bind_matrices[idx]);
+                try joint_palette.append(bind_matrix);
+            } else {
+                try joint_palette.append(Mat4.identity());
+            }
+        }
+        return try joint_palette.toOwnedSlice(alloc);
+    }
+
+    pub fn deinit(self: *SkeletonTree) void {
+        for (self.nodes) |*node| {
+            node.deinit();
+        }
+    }
+};
+
+pub const GltfModel = struct {
+    gltf: Gltf,
+    scene_trees: []SkeletonTree = std.ArrayList(SkeletonTree).empty.items,
+
+    pub fn init(alloc: std.mem.Allocator, buffer: []align(4) const u8) !GltfModel {
+        var gltf = Gltf.init(alloc);
+        try gltf.parse(buffer);
+        var model: GltfModel = .{ .gltf = gltf };
+        try model.initTree(alloc);
+        return model;
+    }
+
+    pub fn deinit(self: *GltfModel) void {
+        for (self.scene_trees) |*root| {
+            root.deinit();
+        }
     }
 
     pub fn initTree(self: *GltfModel, alloc: std.mem.Allocator) !void {
         const scene = self.gltf.data.scenes[self.gltf.data.scene orelse 0];
 
-        var roots: std.ArrayList(Node) = .empty;
+        var roots: std.ArrayList(SkeletonTree) = .empty;
         if (scene.nodes) |nodes| {
-            for (nodes) |node_idx| {
-                try roots.append(alloc, try self.initNode(alloc, node_idx, Mat4.identity()));
+            // each of these is a root node
+            for (nodes) |_| {
+                try roots.append(alloc, try .init(alloc, &self.gltf));
             }
         }
-        self.scene_roots = try roots.toOwnedSlice(alloc);
+        self.scene_trees = try roots.toOwnedSlice(alloc);
     }
 };
 

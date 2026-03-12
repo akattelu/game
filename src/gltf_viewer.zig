@@ -145,7 +145,7 @@ const GltfViewer = struct {
                             _ = ig.igText("Viewing root: %d", root_idx);
                             if (ig.igButton("Prev root")) {}
                             if (ig.igButton("Next root")) {
-                                self.scene_root_index = @min(root_idx + 1, self.model.?.scene_roots.len - 1);
+                                self.scene_root_index = @min(root_idx + 1, self.model.?.scene_trees.len - 1);
                             }
                         }
                         ig.igEndTabItem();
@@ -271,6 +271,7 @@ export fn init(userdata: ?*anyopaque) void {
 export fn frame(userdata: ?*anyopaque) void {
     var arena = std.heap.ArenaAllocator.init(allocator());
     defer arena.deinit();
+    const alloc = arena.allocator();
     const state: *GltfViewer = @ptrCast(@alignCast(userdata));
 
     sfetch.dowork();
@@ -286,27 +287,27 @@ export fn frame(userdata: ?*anyopaque) void {
         .dpi_scale = sapp.dpiScale(),
     });
 
-    state.ui(arena.allocator());
+    state.ui(alloc);
 
     // Pipeline
     sg.applyPipeline(state.pipeline);
     if (state.model) |model| {
         var node_queue = std.ArrayList(Node).empty;
         if (state.scene_root_index) |root_idx| {
-            const root = model.scene_roots[root_idx];
-            node_queue.append(arena.allocator(), root) catch {};
+            const root = model.scene_trees[root_idx];
+            node_queue.append(alloc, root.nodes[0]) catch @panic("Failed to append node to queue");
         }
         while (node_queue.pop()) |node| {
             if (node.mesh) |mesh| {
                 for (mesh.primitives) |prim| {
                     sg.applyBindings(prim.binding);
-                    sg.applyUniforms(shd.UB_vs_params, sg.asRange(&state.vsUniforms(&prim, node.transform_trs)));
+                    sg.applyUniforms(shd.UB_vs_params, sg.asRange(&state.vsUniforms(&prim, node.accumulated_transform)));
                     sg.applyUniforms(shd.UB_fs_params, sg.asRange(&state.fsUniforms(&prim)));
                     sg.draw(0, prim.object_count, 1);
                 }
             }
             for (node.children) |child| {
-                node_queue.append(arena.allocator(), child) catch {};
+                node_queue.append(alloc, child.*) catch {};
             }
         }
     }
