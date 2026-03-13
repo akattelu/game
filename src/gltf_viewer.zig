@@ -141,11 +141,14 @@ const GltfViewer = struct {
             flags |= ig.ImGuiTreeNodeFlags_Bullet;
         }
         const opened = ig.igTreeNodeExStr(node.name.ptr, flags, node.name.ptr);
-        // if (node.mesh) |_| {
-        //     ig.igText("Has mesh?: Yes");
-        // } else {
-        //     ig.igText("Has mesh?: No");
-        // }
+        if (node.mesh) |_| {
+            ig.igSameLine();
+            ig.igTextColored(.{ .x = 0.4, .y = 0.8, .z = 0.4, .w = 1.0 }, "[Has Mesh]");
+        }
+        if (node.skin) |_| {
+            ig.igSameLine();
+            ig.igTextColored(.{ .x = 1.0, .y = 0.6, .z = 0.2, .w = 1.0 }, "[Skinned]");
+        }
         if (opened) {
             for (node.children) |child| {
                 self.ui_for_node(child);
