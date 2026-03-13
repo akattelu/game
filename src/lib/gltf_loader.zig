@@ -23,7 +23,7 @@ pub const Vertex = extern struct {
     v: i16,
     normal: Vec3,
     tangent: Vec4,
-    joint: [4]u8,
+    joint: [4]u32,
     weight: Vec4,
 };
 
@@ -267,7 +267,7 @@ pub const Primitive = struct {
                             .u = 0,
                             .v = 0,
                             .tangent = Vec4.new(0, 0, 0, 0),
-                            .joint = [4]u8{ 0, 0, 0, 0 },
+                            .joint = [4]u32{ 0, 0, 0, 0 },
                             .weight = Vec4.new(0, 0, 0, 0),
                         });
                     }
@@ -309,10 +309,32 @@ pub const Primitive = struct {
                 .joints => |joints| {
                     // for now for joints just print the component type
                     const accessor = gltf.data.accessors[joints];
-                    var it = accessor.iterator(u8, gltf, gltf.glb_binary.?);
-                    var i: u32 = 0;
-                    while (it.next()) |n| : (i += 1) {
-                        vertices.items[i].joint = [4]u8{ n[0], n[1], n[2], n[3] };
+                    switch (accessor.component_type) {
+                        .unsigned_byte => {
+                            var it = accessor.iterator(u8, gltf, gltf.glb_binary.?);
+                            var i: u32 = 0;
+                            while (it.next()) |n| : (i += 1) {
+                                vertices.items[i].joint = .{
+                                    @intCast(n[0]),
+                                    @intCast(n[1]),
+                                    @intCast(n[2]),
+                                    @intCast(n[3]),
+                                };
+                            }
+                        },
+                        .unsigned_short => {
+                            var it = accessor.iterator(u16, gltf, gltf.glb_binary.?);
+                            var i: u32 = 0;
+                            while (it.next()) |n| : (i += 1) {
+                                vertices.items[i].joint = .{
+                                    @intCast(n[0]),
+                                    @intCast(n[1]),
+                                    @intCast(n[2]),
+                                    @intCast(n[3]),
+                                };
+                            }
+                        },
+                        else => |ct| std.debug.panic("unsupported component type for joints: {s}", .{@tagName(ct)}),
                     }
                 },
                 .weights => |weights| {
