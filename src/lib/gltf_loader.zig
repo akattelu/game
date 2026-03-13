@@ -142,19 +142,21 @@ pub const SkeletonTree = struct {
         }
     }
 
-    fn getJointPalette(self: *SkeletonTree, alloc: std.mem.Allocator) ![]Mat4 {
-        var joint_palette: std.ArrayList(Mat4) = .empty;
-        for (self.nodes, 0..) |node, idx| {
-            // joint_palette[i] = global_transform(joint[i]) * inverse_bind_matrix[i]
-            if (node.skin) |skin| {
-                // For animation we will need to accumulate this per frame
-                const bind_matrix = Mat4.mul(node.accumulated_transform, skin.inverse_bind_matrices[idx]);
-                try joint_palette.append(bind_matrix);
-            } else {
-                try joint_palette.append(Mat4.identity());
+    pub fn getJointPalette(self: *const SkeletonTree, alloc: std.mem.Allocator, node: *const Node) ![50]Mat4 {
+        _ = alloc;
+        var joint_palette: [50]Mat4 = .{Mat4.identity()} ** 50;
+        var i: usize = 0;
+        // joint_palette[i] = global_transform(joint[i]) * inverse_bind_matrix[i]
+        if (node.skin) |skin| {
+            for (skin.joint_node_indices) |joint_idx| {
+                const transform = self.nodes[joint_idx].accumulated_transform;
+                std.debug.assert(i < 50);
+                const bind_matrix = Mat4.mul(transform, skin.inverse_bind_matrices[i]);
+                joint_palette[i] = bind_matrix;
+                i += 1;
             }
         }
-        return try joint_palette.toOwnedSlice(alloc);
+        return joint_palette;
     }
 
     pub fn deinit(self: *SkeletonTree) void {

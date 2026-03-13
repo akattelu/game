@@ -6,6 +6,7 @@
 layout(binding = 0) uniform vs_params {
     mat4 model;
     mat4 view_projection;
+    mat4 joint_palette[50];
 };
 
 in vec4 position;
