@@ -293,9 +293,13 @@ export fn frame(userdata: ?*anyopaque) void {
     sg.applyPipeline(state.pipeline);
     if (state.model) |model| {
         var node_queue = std.ArrayList(Node).empty;
+
+        // Push starting root node
         if (state.scene_root_index) |root_idx| {
             const root = model.scene_trees[root_idx];
-            node_queue.append(alloc, root.nodes[root.root_idx]) catch @panic("Failed to append node to queue");
+            const root_idx_of_scene = root.root_idx;
+            root.nodes[root_idx_of_scene].accumulated_transform = root.nodes[root_idx_of_scene].local_trs_transform;
+            node_queue.append(alloc, root.nodes[root_idx_of_scene]) catch @panic("Failed to append node to queue");
         }
         while (node_queue.pop()) |node| {
             if (node.mesh) |mesh| {
@@ -307,6 +311,8 @@ export fn frame(userdata: ?*anyopaque) void {
                 }
             }
             for (node.children) |child| {
+                const child_node = child.*;
+                child.accumulated_transform = Mat4.mul(node.accumulated_transform, child_node.local_trs_transform);
                 node_queue.append(alloc, child.*) catch {};
             }
         }
