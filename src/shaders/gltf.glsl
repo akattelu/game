@@ -6,7 +6,7 @@
 layout(binding = 0) uniform vs_params {
     mat4 model;
     mat4 view_projection;
-    mat4 joint_palette[50];
+    mat4 joint_palette[65];
 };
 
 in vec4 position;
@@ -25,7 +25,12 @@ out vec4 v_tangent;
 out vec3 v_world_pos;
 
 void main() {
-    vec4 world = model * position;
+    mat4 skin_matrix = joint_palette[joints.x] * weights.x
+                 + joint_palette[joints.y] * weights.y
+                 + joint_palette[joints.z] * weights.z
+                 + joint_palette[joints.w] * weights.w;
+    vec4 skinned_pos = skin_matrix * position;
+    vec4 world = model * skinned_pos;
     gl_Position = view_projection * world;
     v_world_pos = world.xyz;
     color = color0;

@@ -93,7 +93,7 @@ const GltfViewer = struct {
         self.scene_root_index = 0;
     }
 
-    fn vsUniforms(self: *GltfViewer, prim: *const Primitive, model: Mat4, joint_palette: [50]Mat4) shd.VsParams {
+    fn vsUniforms(self: *GltfViewer, prim: *const Primitive, model: Mat4, joint_palette: [65]Mat4) shd.VsParams {
         const r = self.camera_radius;
         const phi = self.camera_phi;
         const theta = self.camera_theta;
@@ -302,7 +302,7 @@ export fn frame(userdata: ?*anyopaque) void {
             root.nodes[root_idx_of_scene].accumulated_transform = root.nodes[root_idx_of_scene].local_trs_transform;
             node_queue.append(alloc, root.nodes[root_idx_of_scene]) catch @panic("Failed to append node to queue");
             while (node_queue.pop()) |*node| {
-                const joint_palette = root.getJointPalette(alloc, node) catch @panic("Failed to get joint palette");
+                const joint_palette = root.getJointPalette(node);
                 if (node.mesh) |mesh| {
                     for (mesh.primitives) |prim| {
                         sg.applyBindings(prim.binding);

@@ -142,15 +142,15 @@ pub const SkeletonTree = struct {
         }
     }
 
-    pub fn getJointPalette(self: *const SkeletonTree, alloc: std.mem.Allocator, node: *const Node) ![50]Mat4 {
-        _ = alloc;
-        var joint_palette: [50]Mat4 = .{Mat4.identity()} ** 50;
+    pub fn getJointPalette(self: *const SkeletonTree, node: *const Node) [65]Mat4 {
+        var joint_palette: [65]Mat4 = .{Mat4.identity()} ** 65;
         var i: usize = 0;
         // joint_palette[i] = global_transform(joint[i]) * inverse_bind_matrix[i]
         if (node.skin) |skin| {
+            print("Num joints: {}\n", .{skin.joint_node_indices.len});
             for (skin.joint_node_indices) |joint_idx| {
                 const transform = self.nodes[joint_idx].accumulated_transform;
-                std.debug.assert(i < 50);
+                std.debug.assert(i < 65);
                 const bind_matrix = Mat4.mul(transform, skin.inverse_bind_matrices[i]);
                 joint_palette[i] = bind_matrix;
                 i += 1;
