@@ -1,0 +1,17 @@
+// Project-local debug tasks
+//
+// For more documentation on how to configure debug tasks,
+// see: https://zed.dev/docs/debugger
+[
+  {
+    "adapter": "CodeLLDB",
+    "label": "Run GLTF Viewer",
+    "request": "launch",
+    "program": "./zig-out/bin/gltf_viewer_macos",
+    "cwd": "$ZED_WORKTREE_ROOT",
+    "build": {
+      "command": "zig",
+      "args": ["build", "install"],
+    },
+  },
+]
