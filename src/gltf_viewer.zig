@@ -295,7 +295,7 @@ export fn frame(userdata: ?*anyopaque) void {
         var node_queue = std.ArrayList(Node).empty;
         if (state.scene_root_index) |root_idx| {
             const root = model.scene_trees[root_idx];
-            node_queue.append(alloc, root.nodes[0]) catch @panic("Failed to append node to queue");
+            node_queue.append(alloc, root.nodes[root.root_idx]) catch @panic("Failed to append node to queue");
         }
         while (node_queue.pop()) |node| {
             if (node.mesh) |mesh| {

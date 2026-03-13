@@ -114,8 +114,9 @@ pub const Node = struct {
 
 pub const SkeletonTree = struct {
     nodes: []Node,
+    root_idx: usize,
 
-    pub fn init(alloc: std.mem.Allocator, gltf: *Gltf) !SkeletonTree {
+    pub fn init(alloc: std.mem.Allocator, gltf: *Gltf, root_idx: usize) !SkeletonTree {
         var nodes: std.ArrayList(Node) = .empty;
         for (gltf.data.nodes, 0..) |_, node_idx| {
             const node = try Node.init(alloc, node_idx, gltf);
@@ -124,6 +125,7 @@ pub const SkeletonTree = struct {
 
         var tree: SkeletonTree = .{
             .nodes = try nodes.toOwnedSlice(alloc),
+            .root_idx = root_idx,
         };
         try tree.populateChildren(alloc, gltf);
         return tree;
@@ -132,14 +134,11 @@ pub const SkeletonTree = struct {
     fn populateChildren(self: *SkeletonTree, alloc: std.mem.Allocator, gltf: *Gltf) !void {
         for (self.nodes, 0..) |*node, idx| {
             const gltf_node = gltf.data.nodes[idx];
-            if (gltf_node.children.len > 0) {
-                var children_pointers: std.ArrayList(*Node) = .empty;
-                for (gltf_node.children) |child_idx| {
-                    var child_node = self.nodes[child_idx];
-                    try children_pointers.append(alloc, &child_node);
-                }
-                node.children = try children_pointers.toOwnedSlice(alloc);
+            var children_pointers: std.ArrayList(*Node) = .empty;
+            for (gltf_node.children) |child_idx| {
+                try children_pointers.append(alloc, &self.nodes[child_idx]);
             }
+            node.children = try children_pointers.toOwnedSlice(alloc);
         }
     }
 
@@ -173,7 +172,7 @@ pub const GltfModel = struct {
         var gltf = Gltf.init(alloc);
         try gltf.parse(buffer);
         var model: GltfModel = .{ .gltf = gltf };
-        try model.initTree(alloc);
+        try model.initTrees(alloc);
         return model;
     }
 
@@ -183,14 +182,14 @@ pub const GltfModel = struct {
         }
     }
 
-    pub fn initTree(self: *GltfModel, alloc: std.mem.Allocator) !void {
+    pub fn initTrees(self: *GltfModel, alloc: std.mem.Allocator) !void {
         const scene = self.gltf.data.scenes[self.gltf.data.scene orelse 0];
 
         var roots: std.ArrayList(SkeletonTree) = .empty;
         if (scene.nodes) |nodes| {
             // each of these is a root node
-            for (nodes) |_| {
-                try roots.append(alloc, try .init(alloc, &self.gltf));
+            for (nodes) |idx| {
+                try roots.append(alloc, try .init(alloc, &self.gltf, idx));
             }
         }
         self.scene_trees = try roots.toOwnedSlice(alloc);
