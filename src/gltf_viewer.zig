@@ -100,11 +100,7 @@ const GltfViewer = struct {
         _ = prim;
         return .{
             .view_projection = Mat4.vp(
-                Vec3.new(
-                    r * @sin(phi) * @cos(theta),
-                    r * @cos(phi),
-                    r * @sin(phi) * @sin(theta),
-                ),
+                Vec3.new(r * @sin(phi) * @cos(theta), r * @cos(phi), r * @sin(phi) * @sin(theta)),
                 sapp.widthf(),
                 sapp.heightf(),
             ),
