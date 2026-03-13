@@ -34,6 +34,7 @@ pub const Skin = struct {
 };
 
 pub const Node = struct {
+    name: []const u8,
     children: []*Node,
     mesh: ?Mesh,
     skin: ?Skin,
@@ -47,7 +48,10 @@ pub const Node = struct {
         var mesh: ?Mesh = null;
         var skin: ?Skin = null;
         var transform_trs = Mat4.identity();
-
+        var name: []const u8 = "(unknown-node-name)";
+        if (gltf_node.name) |node_name| {
+            name = try alloc.dupe(u8, node_name);
+        }
         // Apply local transform
         if (gltf_node.matrix) |matrix| {
             transform_trs = .fromArray(matrix);
@@ -59,6 +63,7 @@ pub const Node = struct {
         if (gltf_node.skin) |skin_idx| skin = try loadSkin(alloc, skin_idx, gltf); // Apply skin
 
         return Node{
+            .name = name,
             .children = try children.toOwnedSlice(alloc),
             .mesh = mesh,
             .skin = skin,

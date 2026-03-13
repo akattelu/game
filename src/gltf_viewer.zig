@@ -16,17 +16,17 @@ const simgui = sokol.imgui;
 const sgimgui = sokol.sgimgui;
 const zigimg = @import("zigimg");
 
+const gltf_loader = @import("lib/gltf_loader.zig");
+const GltfModel = gltf_loader.GltfModel;
+const Vertex = gltf_loader.Vertex;
+const Primitive = gltf_loader.Primitive;
+const Node = gltf_loader.Node;
 const math = @import("lib/math.zig");
 const Mat4 = math.Mat4;
 const Vec3 = math.Vec3;
 const Vec4 = math.Vec4;
 const util = @import("lib/util.zig");
 const shd = @import("shaders/gltf.glsl.zig");
-const gltf_loader = @import("lib/gltf_loader.zig");
-const GltfModel = gltf_loader.GltfModel;
-const Vertex = gltf_loader.Vertex;
-const Primitive = gltf_loader.Primitive;
-const Node = gltf_loader.Node;
 
 inline fn allocator() std.mem.Allocator {
     return if (builtin.cpu.arch.isWasm()) std.heap.c_allocator else std.heap.smp_allocator;
@@ -35,7 +35,7 @@ inline fn allocator() std.mem.Allocator {
 var st: GltfViewer = .{};
 var sfetch_buffer: [100 * 1024 * 1024]u8 align(4) = undefined;
 
-const NUM_ASSETS = 15;
+const NUM_ASSETS = 14;
 const available_assets: [NUM_ASSETS][]const u8 = .{
     "CompareMetallic.glb",
     "CompareNormal.glb",
@@ -48,7 +48,6 @@ const available_assets: [NUM_ASSETS][]const u8 = .{
     "CesiumMilkTruck.glb",
     "CesiumMan.glb",
     "IridescentDishWithOlives.glb",
-    "SimpleSkin.gltf",
     "RiggedSimple.glb",
     "BarramundiFish.glb",
     "Avocado.glb",
@@ -65,6 +64,7 @@ const GltfViewer = struct {
 
     // Other UI
     imgui_window_open: bool = true,
+    tree_explorer_open: bool = true,
 
     // Camera
     eye: Vec3 = .{ .x = 110.0, .y = 125.0, .z = 30.0 },
@@ -134,11 +134,47 @@ const GltfViewer = struct {
         };
     }
 
+    fn ui_for_node(self: *GltfViewer, node: *const Node) void {
+        var flags = ig.ImGuiTreeNodeFlags_DefaultOpen;
+        if (node.children.len == 0) {
+            flags |= ig.ImGuiTreeNodeFlags_Leaf;
+            flags |= ig.ImGuiTreeNodeFlags_Bullet;
+        }
+        const opened = ig.igTreeNodeExStr(node.name.ptr, flags, node.name.ptr);
+        // if (node.mesh) |_| {
+        //     ig.igText("Has mesh?: Yes");
+        // } else {
+        //     ig.igText("Has mesh?: No");
+        // }
+        if (opened) {
+            for (node.children) |child| {
+                self.ui_for_node(child);
+            }
+            ig.igTreePop();
+        }
+    }
+
     fn ui(self: *GltfViewer, alloc: std.mem.Allocator) void {
         if (ig.igBeginMainMenuBar()) {
             sgimgui.drawMenu("sokol-gfx");
             ig.igEndMainMenuBar();
         }
+
+        // Walk current scene tree
+        if (ig.igBegin("glTF Tree Explorer", &self.tree_explorer_open, ig.ImGuiWindowFlags_AlwaysAutoResize)) {
+            if (self.model) |model| {
+                // Push starting root node
+                if (self.scene_root_index) |root_idx| {
+                    const root = model.scene_trees[root_idx];
+                    const root_idx_of_scene = root.root_idx;
+                    const root_node = root.nodes[root_idx_of_scene];
+                    self.ui_for_node(&root_node);
+                }
+            } else {
+                ig.igText("No model loaded");
+            }
+        }
+        ig.igEnd();
         if (ig.igBegin("GLTF/GLB Viewer", &self.imgui_window_open, ig.ImGuiWindowFlags_AlwaysAutoResize)) {
             if (ig.igBeginTabBar("Settings", 0)) {
                 if (self.model) |_| { // Only if mesh is already loaded
@@ -146,7 +182,9 @@ const GltfViewer = struct {
                         _ = ig.igCheckbox("Apply Texture?", &self.apply_texture);
                         if (self.scene_root_index) |root_idx| {
                             _ = ig.igText("Viewing root: %d", root_idx);
-                            if (ig.igButton("Prev root")) {}
+                            if (ig.igButton("Prev root")) {
+                                self.scene_root_index = @max(0, root_idx - 1);
+                            }
                             if (ig.igButton("Next root")) {
                                 self.scene_root_index = @min(root_idx + 1, self.model.?.scene_trees.len - 1);
                             }
