@@ -149,6 +149,15 @@ const GltfViewer = struct {
             ig.igSameLine();
             ig.igTextColored(.{ .x = 1.0, .y = 0.6, .z = 0.2, .w = 1.0 }, "[Skinned]");
         }
+        // if (Mat4.eq(node.local_trs_transform, Mat4.identity())) {
+        //     ig.igSameLine();
+        //     ig.igTextColored(.{ .x = 0.2, .y = 0.6, .z = 0.8, .w = 1.0 }, "[Transformed]");
+        // }
+        {
+            ig.igSameLine();
+            ig.igTextColored(.{ .x = 0.6, .y = 0.6, .z = 0.6, .w = 1.0 }, "[%d children]", node.children.len);
+        }
+
         if (opened) {
             for (node.children) |child| {
                 self.ui_for_node(child);
@@ -163,49 +172,9 @@ const GltfViewer = struct {
             ig.igEndMainMenuBar();
         }
 
-        // Walk current scene tree
-        if (ig.igBegin("glTF Tree Explorer", &self.tree_explorer_open, ig.ImGuiWindowFlags_AlwaysAutoResize)) {
-            if (self.model) |model| {
-                // Push starting root node
-                if (self.scene_root_index) |root_idx| {
-                    const root = model.scene_trees[root_idx];
-                    const root_idx_of_scene = root.root_idx;
-                    const root_node = root.nodes[root_idx_of_scene];
-                    self.ui_for_node(&root_node);
-                }
-            } else {
-                ig.igText("No model loaded");
-            }
-        }
-        ig.igEnd();
         if (ig.igBegin("GLTF/GLB Viewer", &self.imgui_window_open, ig.ImGuiWindowFlags_AlwaysAutoResize)) {
             if (ig.igBeginTabBar("Settings", 0)) {
-                if (self.model) |_| { // Only if mesh is already loaded
-                    if (ig.igBeginTabItem("General", null, 0)) {
-                        _ = ig.igCheckbox("Apply Texture?", &self.apply_texture);
-                        if (self.scene_root_index) |root_idx| {
-                            _ = ig.igText("Viewing root: %d", root_idx);
-                            if (ig.igButton("Prev root")) {
-                                self.scene_root_index = @max(0, root_idx - 1);
-                            }
-                            if (ig.igButton("Next root")) {
-                                self.scene_root_index = @min(root_idx + 1, self.model.?.scene_trees.len - 1);
-                            }
-                        }
-                        ig.igEndTabItem();
-                    }
-
-                    if (ig.igBeginTabItem("Lighting", null, 0)) {
-                        _ = ig.igCheckbox("Apply Lighting?", &self.apply_lighting);
-                        _ = ig.igSliderFloat("Cell Spacing", &self.normal_cell_spacing, 0.01, 10.0);
-                        _ = ig.igSliderFloat("Ambient Light Intensity", &self.ambient_intensity, 0.1, 1.0);
-                        _ = ig.igSliderFloat("Azimuth Angle", &self.azimuth_angle, 0.0, 2 * std.math.pi);
-                        _ = ig.igSliderFloat("Elevation angle", &self.elevation_angle, 0.0, std.math.pi / 2.0);
-                        _ = ig.igColorEdit3("Lighting Color", @ptrCast(&self.light_color), 0);
-                        ig.igEndTabItem();
-                    }
-                }
-                if (ig.igBeginTabItem("Loader", null, 0)) {
+                if (ig.igBeginTabItem("General", null, 0)) {
                     const preview = if (self.selected_asset_index) |a| available_assets[a] else "Pick a file...";
                     if (ig.igBeginCombo("Select an asset to load", preview.ptr, 0)) {
                         for (&self.assets_selection_state, 0..) |*selected, i| {
@@ -216,11 +185,28 @@ const GltfViewer = struct {
                         }
                         ig.igEndCombo();
                     }
+
+                    if (self.model) |model| {
+                        // Push starting root node
+                        if (self.scene_root_index) |root_idx| {
+                            const root = model.scene_trees[root_idx];
+                            const root_idx_of_scene = root.root_idx;
+                            const root_node = root.nodes[root_idx_of_scene];
+                            self.ui_for_node(&root_node);
+                        }
+                    } else {
+                        ig.igText("No model loaded");
+                    }
+
                     ig.igEndTabItem();
                 }
-
-                if (ig.igBeginTabItem("Meta", null, 0)) {
-                    _ = ig.igBulletText("Dear ImGui Version: %s", ig.IMGUI_VERSION);
+                if (ig.igBeginTabItem("Lighting", null, 0)) {
+                    _ = ig.igCheckbox("Apply Lighting?", &self.apply_lighting);
+                    _ = ig.igSliderFloat("Cell Spacing", &self.normal_cell_spacing, 0.01, 10.0);
+                    _ = ig.igSliderFloat("Ambient Light Intensity", &self.ambient_intensity, 0.1, 1.0);
+                    _ = ig.igSliderFloat("Azimuth Angle", &self.azimuth_angle, 0.0, 2 * std.math.pi);
+                    _ = ig.igSliderFloat("Elevation angle", &self.elevation_angle, 0.0, std.math.pi / 2.0);
+                    _ = ig.igColorEdit3("Lighting Color", @ptrCast(&self.light_color), 0);
                     ig.igEndTabItem();
                 }
 

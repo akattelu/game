@@ -7,8 +7,9 @@
 //  Ported from HandmadeMath.h
 //  Copied from https://github.com/floooh/sokol-zig/blob/master/examples/math.zig
 //------------------------------------------------------------------------------
-const assert = @import("std").debug.assert;
-const math = @import("std").math;
+const std = @import("std");
+const assert = std.debug.assert;
+const math = std.math;
 
 fn radians(deg: f32) f32 {
     return deg * (math.pi / 180.0);
@@ -325,6 +326,17 @@ pub const Mat4 = extern struct {
             },
         };
         return m;
+    }
+
+    pub fn eq(m1: Mat4, m2: Mat4) bool {
+        for (m1.m, 0..) |row, y| {
+            for (row, 0..) |val, x| {
+                if (val != m2.m[y][x]) {
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 };
 
