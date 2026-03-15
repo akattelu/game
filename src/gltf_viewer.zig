@@ -134,7 +134,7 @@ const GltfViewer = struct {
         };
     }
 
-    fn ui_for_node(self: *GltfViewer, node: *const Node) void {
+    fn ui_for_node(self: *GltfViewer, alloc: std.mem.Allocator, node: *const Node) !void {
         var flags = ig.ImGuiTreeNodeFlags_DefaultOpen;
         if (node.children.len == 0) {
             flags |= ig.ImGuiTreeNodeFlags_Leaf;
@@ -145,22 +145,23 @@ const GltfViewer = struct {
             ig.igSameLine();
             ig.igTextColored(.{ .x = 0.4, .y = 0.8, .z = 0.4, .w = 1.0 }, "[Has Mesh]");
         }
-        if (node.skin) |_| {
-            ig.igSameLine();
-            ig.igTextColored(.{ .x = 1.0, .y = 0.6, .z = 0.2, .w = 1.0 }, "[Skinned]");
-        }
-        // if (Mat4.eq(node.local_trs_transform, Mat4.identity())) {
-        //     ig.igSameLine();
-        //     ig.igTextColored(.{ .x = 0.2, .y = 0.6, .z = 0.8, .w = 1.0 }, "[Transformed]");
-        // }
         {
             ig.igSameLine();
             ig.igTextColored(.{ .x = 0.6, .y = 0.6, .z = 0.6, .w = 1.0 }, "[%d children]", node.children.len);
         }
+        if (node.skin) |skin| {
+            ig.igSameLine();
+            ig.igTextColored(.{ .x = 1.0, .y = 0.6, .z = 0.2, .w = 1.0 }, "[Skinned]");
+            // Start subtree for skin information
+
+            const skin_name = try std.fmt.allocPrintSentinel(alloc, "Skin: {s}", .{skin.name orelse "(unnamed-skin)"}, 0);
+            _ = ig.igTreeNodeExStr(skin_name.ptr, flags, skin_name.ptr);
+            ig.igTreePop();
+        }
 
         if (opened) {
             for (node.children) |child| {
-                self.ui_for_node(child);
+                try self.ui_for_node(alloc, child);
             }
             ig.igTreePop();
         }
@@ -192,7 +193,7 @@ const GltfViewer = struct {
                             const root = model.scene_trees[root_idx];
                             const root_idx_of_scene = root.root_idx;
                             const root_node = root.nodes[root_idx_of_scene];
-                            self.ui_for_node(&root_node);
+                            self.ui_for_node(alloc, &root_node) catch @panic("Failed to render node");
                         }
                     } else {
                         ig.igText("No model loaded");
