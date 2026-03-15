@@ -241,6 +241,33 @@ const GltfViewer = struct {
                     _ = ig.igSliderFloatEx("Camera Radius", &self.camera_radius, 0.00001, 1000.0, "%2f", ig.ImGuiSliderFlags_Logarithmic);
                     ig.igEndTabItem();
                 }
+
+                if (ig.igBeginTabItem("Animation", null, 0)) {
+                    if (self.model) |*model| {
+                        const animations = model.gltf.data.animations;
+                        for (animations) |*anim| {
+                            const animation_name = std.fmt.allocPrintSentinel(alloc, "{s}", .{anim.name orelse "(unknown-animation-name)"}, 0) catch unreachable;
+                            const opened = ig.igTreeNodeExStr(animation_name, 0, animation_name);
+                            if (opened) {
+                                for (anim.channels, 0..) |*channel, channel_index| {
+                                    const channel_name = std.fmt.allocPrintSentinel(alloc, "{s} Channel {d}", .{ anim.name orelse "(unknown-animation-name)", channel_index }, 0) catch unreachable;
+                                    const channel_subtree_opened = ig.igTreeNodeExStr(channel_name, 0, channel_name);
+                                    if (channel_subtree_opened) {
+                                        const tree = model.scene_trees[self.scene_root_index.?];
+                                        const target_node = tree.nodes[channel.target.node];
+                                        _ = ig.igBulletText("Target Node: %s", target_node.name.ptr);
+                                        _ = ig.igBulletText("Translation Property: %s", @tagName(channel.target.property).ptr);
+                                        ig.igTreePop();
+                                    }
+                                }
+
+                                ig.igTreePop();
+                            }
+                        }
+                    }
+                    ig.igEndTabItem();
+                }
+
                 ig.igEndTabBar();
             }
         }
