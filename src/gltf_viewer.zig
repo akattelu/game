@@ -401,7 +401,7 @@ export fn frame(userdata: ?*anyopaque) void {
                 for (node.children) |child| {
                     var local_trs = child.local_trs_transform;
                     if (model.gltf.data.animations.len > 0) {
-                        local_trs = model.animatedNodeTRS(0, child.idx, 2);
+                        local_trs = model.animatedNodeTRS(alloc, 0, child.idx, 2) catch @panic("Failed to get animated transform");
                     }
                     child.accumulated_transform = Mat4.mul(node.accumulated_transform, local_trs);
                     node_queue.append(alloc, child.*) catch {};

@@ -205,7 +205,7 @@ pub const GltfModel = struct {
         self.scene_trees = try roots.toOwnedSlice(alloc);
     }
 
-    pub fn animatedNodeTRS(self: *GltfModel, animation_idx: usize, node_idx: usize, t: f32) Mat4 {
+    pub fn animatedNodeTRS(self: *GltfModel, alloc: std.mem.Allocator, animation_idx: usize, node_idx: usize, t: f32) !Mat4 {
         var translation: [3]f32 = .{ 0, 0, 0 };
         var rotation: [4]f32 = .{ 0, 0, 0, 1 };
         var scale: [3]f32 = .{ 1, 1, 1 };
@@ -232,31 +232,18 @@ pub const GltfModel = struct {
             const sampler_output_accessor = self.gltf.data.accessors[sampler.output];
             if (channel.target.property == .translation) {
                 // If translation, read a vec3 from the output accessor
-                var output_it = sampler_output_accessor.iterator(f32, &self.gltf, self.gltf.glb_binary.?);
-                // Skip values until time_idx value
-                for (0..time_idx) |_| {
-                    _ = output_it.next() orelse @panic("translation accessor missing value");
-                }
-                const node_translation_vec = output_it.next() orelse @panic("translation accessor missing value");
-                translation = .{ node_translation_vec[0], node_translation_vec[1], node_translation_vec[2] };
+                const translation_vectors = try self.gltf.getDataFromBufferView(f32, alloc, sampler_output_accessor, self.gltf.glb_binary.?);
+                translation = .{ translation_vectors[time_idx], translation_vectors[time_idx + 1], translation_vectors[time_idx + 2] };
             }
             if (channel.target.property == .rotation) {
                 // If rotation, read a quat from the output accessor
-                var output_it = sampler_output_accessor.iterator(f32, &self.gltf, self.gltf.glb_binary.?);
-                for (0..time_idx) |_| {
-                    _ = output_it.next() orelse @panic("rotation accessor missing value");
-                }
-                const node_rotation_vec = output_it.next() orelse @panic("rotation accessor missing value");
-                rotation = .{ node_rotation_vec[0], node_rotation_vec[1], node_rotation_vec[2], node_rotation_vec[3] };
+                const rotation_vectors = try self.gltf.getDataFromBufferView(f32, alloc, sampler_output_accessor, self.gltf.glb_binary.?);
+                rotation = .{ rotation_vectors[time_idx], rotation_vectors[time_idx + 1], rotation_vectors[time_idx + 2], rotation_vectors[time_idx + 3] };
             }
             if (channel.target.property == .scale) {
                 // If scale, read a vec3 from the output accessor
-                var output_it = sampler_output_accessor.iterator(f32, &self.gltf, self.gltf.glb_binary.?);
-                for (0..time_idx) |_| {
-                    _ = output_it.next() orelse @panic("scale accessor missing value");
-                }
-                const node_scale_vec = output_it.next() orelse @panic("scale accessor missing value");
-                scale = .{ node_scale_vec[0], node_scale_vec[1], node_scale_vec[2] };
+                const scale_vectors = try self.gltf.getDataFromBufferView(f32, alloc, sampler_output_accessor, self.gltf.glb_binary.?);
+                scale = .{ scale_vectors[time_idx], scale_vectors[time_idx + 1], scale_vectors[time_idx + 2] };
             }
         }
 
