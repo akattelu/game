@@ -340,6 +340,56 @@ pub const Mat4 = extern struct {
     }
 };
 
+pub fn lerp(a: [3]f32, b: [3]f32, t: f32) [3]f32 {
+    return .{
+        a[0] + (b[0] - a[0]) * t,
+        a[1] + (b[1] - a[1]) * t,
+        a[2] + (b[2] - a[2]) * t,
+    };
+}
+
+pub fn slerp(q0: [4]f32, q1_raw: [4]f32, t: f32) [4]f32 {
+    // Compute dot product
+    var dot: f32 = q0[0] * q1_raw[0] + q0[1] * q1_raw[1] + q0[2] * q1_raw[2] + q0[3] * q1_raw[3];
+
+    // If dot is negative, negate one quaternion to take the short path
+    var q1 = q1_raw;
+    if (dot < 0.0) {
+        q1 = .{ -q1_raw[0], -q1_raw[1], -q1_raw[2], -q1_raw[3] };
+        dot = -dot;
+    }
+
+    // If quaternions are very close, fall back to normalized lerp (nlerp)
+    // to avoid division by near-zero sin(theta)
+    if (dot > 0.9995) {
+        var result: [4]f32 = .{
+            q0[0] + (q1[0] - q0[0]) * t,
+            q0[1] + (q1[1] - q0[1]) * t,
+            q0[2] + (q1[2] - q0[2]) * t,
+            q0[3] + (q1[3] - q0[3]) * t,
+        };
+        // Normalize
+        const len = @sqrt(result[0] * result[0] + result[1] * result[1] + result[2] * result[2] + result[3] * result[3]);
+        result[0] /= len;
+        result[1] /= len;
+        result[2] /= len;
+        result[3] /= len;
+        return result;
+    }
+
+    const theta = std.math.acos(dot);
+    const sin_theta = @sin(theta);
+    const w0 = @sin((1.0 - t) * theta) / sin_theta;
+    const w1 = @sin(t * theta) / sin_theta;
+
+    return .{
+        q0[0] * w0 + q1[0] * w1,
+        q0[1] * w0 + q1[1] * w1,
+        q0[2] * w0 + q1[2] * w1,
+        q0[3] * w0 + q1[3] * w1,
+    };
+}
+
 test "Vec3.zero" {
     const v = Vec3.zero();
     assert(v.x == 0.0 and v.y == 0.0 and v.z == 0.0);

@@ -68,6 +68,7 @@ const GltfViewer = struct {
     // Animation
     time: f64 = 0.0,
     selected_animation_index: ?usize = null,
+    use_interpolation: bool = true,
 
     // Other UI
     imgui_window_open: bool = true,
@@ -254,6 +255,10 @@ const GltfViewer = struct {
                     if (self.model) |*model| {
                         const animations = model.gltf.data.animations;
 
+                        // Use interpolation checkbox
+                        _ = ig.igCheckbox("Use interpolation", &self.use_interpolation);
+
+                        // Animation selection dropdown
                         const preview = if (self.selected_animation_index) |i| animations[i].name orelse "(unknown-animation-name)" else "Pick an animation...";
                         const preview_z = alloc.dupeZ(u8, preview) catch unreachable;
                         if (ig.igBeginCombo("Select an animation to load", preview_z.ptr, 0)) {
@@ -269,6 +274,7 @@ const GltfViewer = struct {
                             ig.igEndCombo();
                         }
 
+                        // Animation channel subtree
                         if (self.selected_animation_index) |animation_index| {
                             const anim = animations[animation_index];
                             const samplers = anim.samplers;
@@ -419,7 +425,7 @@ export fn frame(userdata: ?*anyopaque) void {
                     var local_trs = child.local_trs_transform;
                     // Apply transform from animation if available
                     if (state.selected_animation_index) |animation_index| {
-                        local_trs = model.animatedNodeTRS(alloc, animation_index, child.idx, state.time) catch @panic("Failed to get animated transform");
+                        local_trs = model.animatedNodeTRS(alloc, animation_index, child.idx, state.time, if (state.use_interpolation) .linear else .none) catch @panic("Failed to get animated transform");
                     }
                     child.accumulated_transform = Mat4.mul(node.accumulated_transform, local_trs);
                     node_queue.append(alloc, child.*) catch {};

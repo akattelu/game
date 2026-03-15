@@ -205,7 +205,7 @@ pub const GltfModel = struct {
         self.scene_trees = try roots.toOwnedSlice(alloc);
     }
 
-    pub fn animatedNodeTRS(self: *GltfModel, alloc: std.mem.Allocator, animation_idx: usize, node_idx: usize, t: f64) !Mat4 {
+    pub fn animatedNodeTRS(self: *GltfModel, alloc: std.mem.Allocator, animation_idx: usize, node_idx: usize, t: f64, preferred_interpolation: enum { none, linear }) !Mat4 {
         var translation: [3]f32 = .{ 0, 0, 0 };
         var rotation: [4]f32 = .{ 0, 0, 0, 1 };
         var scale: [3]f32 = .{ 1, 1, 1 };
@@ -245,19 +245,41 @@ pub const GltfModel = struct {
                 // If translation, read a vec3 from the output accessor
                 const translation_vectors = try self.gltf.getDataFromBufferView(f32, alloc, sampler_output_accessor, self.gltf.glb_binary.?);
                 const translation_start = keyframe_start_idx * 3;
+                const translation_next = keyframe_end_idx * 3;
+                if (preferred_interpolation == .linear) {
+                    const translation0 = .{ translation_vectors[translation_start], translation_vectors[translation_start + 1], translation_vectors[translation_start + 2] };
+                    const translation1 = .{ translation_vectors[translation_next], translation_vectors[translation_next + 1], translation_vectors[translation_next + 2] };
+                    translation = math.lerp(translation0, translation1, interpolation_scale);
+                } else {
+                    translation = .{ translation_vectors[translation_start], translation_vectors[translation_start + 1], translation_vectors[translation_start + 2] };
+                }
                 translation = .{ translation_vectors[translation_start], translation_vectors[translation_start + 1], translation_vectors[translation_start + 2] };
             }
             if (channel.target.property == .rotation) {
                 // If rotation, read a quat from the output accessor
                 const rotation_vectors = try self.gltf.getDataFromBufferView(f32, alloc, sampler_output_accessor, self.gltf.glb_binary.?);
                 const rotation_start = keyframe_start_idx * 4;
-                rotation = .{ rotation_vectors[rotation_start], rotation_vectors[rotation_start + 1], rotation_vectors[rotation_start + 2], rotation_vectors[rotation_start + 3] };
+                const rotation_next = keyframe_end_idx * 4;
+                if (preferred_interpolation == .linear) {
+                    const rotation0 = .{ rotation_vectors[rotation_start], rotation_vectors[rotation_start + 1], rotation_vectors[rotation_start + 2], rotation_vectors[rotation_start + 3] };
+                    const rotation1 = .{ rotation_vectors[rotation_next], rotation_vectors[rotation_next + 1], rotation_vectors[rotation_next + 2], rotation_vectors[rotation_next + 3] };
+                    rotation = math.slerp(rotation0, rotation1, interpolation_scale);
+                } else {
+                    rotation = .{ rotation_vectors[rotation_start], rotation_vectors[rotation_start + 1], rotation_vectors[rotation_start + 2], rotation_vectors[rotation_start + 3] };
+                }
             }
             if (channel.target.property == .scale) {
                 // If scale, read a vec3 from the output accessor
                 const scale_vectors = try self.gltf.getDataFromBufferView(f32, alloc, sampler_output_accessor, self.gltf.glb_binary.?);
                 const scale_start = keyframe_start_idx * 3;
-                scale = .{ scale_vectors[scale_start], scale_vectors[scale_start + 1], scale_vectors[scale_start + 2] };
+                const scale_next = keyframe_end_idx * 3;
+                if (preferred_interpolation == .linear) {
+                    const scale0 = .{ scale_vectors[scale_start], scale_vectors[scale_start + 1], scale_vectors[scale_start + 2] };
+                    const scale1 = .{ scale_vectors[scale_next], scale_vectors[scale_next + 1], scale_vectors[scale_next + 2] };
+                    scale = math.lerp(scale0, scale1, interpolation_scale);
+                } else {
+                    scale = .{ scale_vectors[scale_start], scale_vectors[scale_start + 1], scale_vectors[scale_start + 2] };
+                }
             }
         }
 
