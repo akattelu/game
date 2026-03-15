@@ -62,9 +62,11 @@ const GltfViewer = struct {
     assets_selection_state: [NUM_ASSETS]bool = undefined,
     selected_asset_index: ?usize = null,
 
+    // Skinning
+    use_skinning: bool = false,
+
     // Other UI
     imgui_window_open: bool = true,
-    tree_explorer_open: bool = true,
 
     // Camera
     eye: Vec3 = .{ .x = 110.0, .y = 125.0, .z = 30.0 },
@@ -112,6 +114,7 @@ const GltfViewer = struct {
             ),
             .model = model,
             .joint_palette = joint_palette,
+            .use_skinning = if (self.use_skinning) 1.0 else 0.0,
         };
     }
 
@@ -206,6 +209,9 @@ const GltfViewer = struct {
                     }
 
                     if (self.model) |model| {
+                        // Skinning toggle checkbox
+                        _ = ig.igCheckbox("Use skinning", &self.use_skinning);
+
                         // Push starting root node
                         if (self.scene_root_index) |root_idx| {
                             const root = model.scene_trees[root_idx];

@@ -7,6 +7,7 @@ layout(binding = 0) uniform vs_params {
     mat4 model;
     mat4 view_projection;
     mat4 joint_palette[65];
+    float use_skinning;
 };
 
 in vec4 position;
@@ -29,7 +30,13 @@ void main() {
                  + joint_palette[joints.y] * weights.y
                  + joint_palette[joints.z] * weights.z
                  + joint_palette[joints.w] * weights.w;
-    vec4 skinned_pos = skin_matrix * position;
+    vec4 skinned_pos;
+
+    if (use_skinning == 1.0) {
+        skinned_pos = skin_matrix * position;
+    } else {
+        skinned_pos = position;
+    }
     // vec4 skinned_pos = position;
     vec4 world = model * skinned_pos;
     gl_Position = view_projection * world;
