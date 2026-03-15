@@ -246,7 +246,8 @@ const GltfViewer = struct {
                     if (self.model) |*model| {
                         const animations = model.gltf.data.animations;
                         for (animations) |*anim| {
-                            const animation_name = std.fmt.allocPrintSentinel(alloc, "{s}", .{anim.name orelse "(unknown-animation-name)"}, 0) catch unreachable;
+                            const samplers = anim.samplers;
+                            const animation_name = alloc.dupeZ(u8, anim.name orelse "(unknown-animation-name)") catch unreachable;
                             const opened = ig.igTreeNodeExStr(animation_name, 0, animation_name);
                             if (opened) {
                                 for (anim.channels, 0..) |*channel, channel_index| {
@@ -257,6 +258,10 @@ const GltfViewer = struct {
                                         const target_node = tree.nodes[channel.target.node];
                                         _ = ig.igBulletText("Target Node: %s", target_node.name.ptr);
                                         _ = ig.igBulletText("Translation Property: %s", @tagName(channel.target.property).ptr);
+                                        const channel_sampler = samplers[channel.sampler];
+                                        _ = ig.igBulletText("Sampler Interpolation: %s", @tagName(channel_sampler.interpolation).ptr);
+
+                                        // channel.sampler
                                         ig.igTreePop();
                                     }
                                 }
