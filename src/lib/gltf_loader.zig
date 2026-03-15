@@ -35,6 +35,7 @@ pub const Skin = struct {
 
 pub const Node = struct {
     name: []const u8,
+    idx: usize,
     children: []*Node,
     mesh: ?Mesh,
     skin: ?Skin,
@@ -64,6 +65,7 @@ pub const Node = struct {
 
         return Node{
             .name = name,
+            .idx = node_idx,
             .children = try children.toOwnedSlice(alloc),
             .mesh = mesh,
             .skin = skin,
@@ -201,7 +203,6 @@ pub const GltfModel = struct {
             }
         }
         self.scene_trees = try roots.toOwnedSlice(alloc);
-        _ = self.animatedNodeTRS(0, 0, 0);
     }
 
     pub fn animatedNodeTRS(self: *GltfModel, animation_idx: usize, node_idx: usize, t: f32) Mat4 {
@@ -224,9 +225,7 @@ pub const GltfModel = struct {
             var time_idx: usize = 0;
             while (input_it.next()) |time_value| : (time_idx += 1) {
                 // For now just find the smallest time bigger than t
-                if (time_value[0] > t) {
-                    break;
-                }
+                if (time_value[0] > t) break;
             }
 
             // Read sampler output accessor
@@ -234,18 +233,28 @@ pub const GltfModel = struct {
             if (channel.target.property == .translation) {
                 // If translation, read a vec3 from the output accessor
                 var output_it = sampler_output_accessor.iterator(f32, &self.gltf, self.gltf.glb_binary.?);
+                // Skip values until time_idx value
+                for (0..time_idx) |_| {
+                    _ = output_it.next() orelse @panic("translation accessor missing value");
+                }
                 const node_translation_vec = output_it.next() orelse @panic("translation accessor missing value");
                 translation = .{ node_translation_vec[0], node_translation_vec[1], node_translation_vec[2] };
             }
             if (channel.target.property == .rotation) {
                 // If rotation, read a quat from the output accessor
                 var output_it = sampler_output_accessor.iterator(f32, &self.gltf, self.gltf.glb_binary.?);
+                for (0..time_idx) |_| {
+                    _ = output_it.next() orelse @panic("rotation accessor missing value");
+                }
                 const node_rotation_vec = output_it.next() orelse @panic("rotation accessor missing value");
                 rotation = .{ node_rotation_vec[0], node_rotation_vec[1], node_rotation_vec[2], node_rotation_vec[3] };
             }
             if (channel.target.property == .scale) {
                 // If scale, read a vec3 from the output accessor
                 var output_it = sampler_output_accessor.iterator(f32, &self.gltf, self.gltf.glb_binary.?);
+                for (0..time_idx) |_| {
+                    _ = output_it.next() orelse @panic("scale accessor missing value");
+                }
                 const node_scale_vec = output_it.next() orelse @panic("scale accessor missing value");
                 scale = .{ node_scale_vec[0], node_scale_vec[1], node_scale_vec[2] };
             }

@@ -379,7 +379,7 @@ export fn frame(userdata: ?*anyopaque) void {
 
     // Pipeline
     sg.applyPipeline(state.pipeline);
-    if (state.model) |model| {
+    if (state.model) |*model| {
         var node_queue = std.ArrayList(Node).empty;
 
         // Push starting root node
@@ -399,7 +399,11 @@ export fn frame(userdata: ?*anyopaque) void {
                     }
                 }
                 for (node.children) |child| {
-                    child.accumulated_transform = Mat4.mul(node.accumulated_transform, child.local_trs_transform);
+                    var local_trs = child.local_trs_transform;
+                    if (model.gltf.data.animations.len > 0) {
+                        local_trs = model.animatedNodeTRS(0, child.idx, 2);
+                    }
+                    child.accumulated_transform = Mat4.mul(node.accumulated_transform, local_trs);
                     node_queue.append(alloc, child.*) catch {};
                 }
             }
