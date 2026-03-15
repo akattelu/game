@@ -135,28 +135,46 @@ const GltfViewer = struct {
     }
 
     fn ui_for_node(self: *GltfViewer, alloc: std.mem.Allocator, node: *const Node) !void {
+        // Set flags based on node type
         var flags = ig.ImGuiTreeNodeFlags_DefaultOpen;
-        if (node.children.len == 0) {
-            flags |= ig.ImGuiTreeNodeFlags_Leaf;
-            flags |= ig.ImGuiTreeNodeFlags_Bullet;
-        }
+        if (node.children.len == 0 and node.skin == null) flags |= ig.ImGuiTreeNodeFlags_Leaf;
+        if (node.children.len == 0 and node.skin != null) flags |= ig.ImGuiTreeNodeFlags_Bullet;
+
         const opened = ig.igTreeNodeExStr(node.name.ptr, flags, node.name.ptr);
+
+        // Mesh tag
         if (node.mesh) |_| {
             ig.igSameLine();
             ig.igTextColored(.{ .x = 0.4, .y = 0.8, .z = 0.4, .w = 1.0 }, "[Has Mesh]");
         }
-        {
-            ig.igSameLine();
-            ig.igTextColored(.{ .x = 0.6, .y = 0.6, .z = 0.6, .w = 1.0 }, "[%d children]", node.children.len);
-        }
+        // Children count tag
+        ig.igSameLine();
+        ig.igTextColored(.{ .x = 0.6, .y = 0.6, .z = 0.6, .w = 1.0 }, "[%d children]", node.children.len);
+
+        // Skin info
         if (node.skin) |skin| {
+            // Skinned tag
             ig.igSameLine();
             ig.igTextColored(.{ .x = 1.0, .y = 0.6, .z = 0.2, .w = 1.0 }, "[Skinned]");
-            // Start subtree for skin information
 
             const skin_name = try std.fmt.allocPrintSentinel(alloc, "Skin: {s}", .{skin.name orelse "(unnamed-skin)"}, 0);
-            _ = ig.igTreeNodeExStr(skin_name.ptr, flags, skin_name.ptr);
-            ig.igTreePop();
+            if (opened) { // Start subtree for skin information
+                const skin_subtree_open = ig.igTreeNodeExStr(skin_name.ptr, 0, skin_name.ptr);
+                ig.igSameLine();
+                ig.igTextColored(.{ .x = 0.6, .y = 0.6, .z = 0.6, .w = 1.0 }, "[%d inverse bind matrices]", skin.inverse_bind_matrices.len);
+
+                if (skin_subtree_open) { // Render joint nodes indices and names
+                    for (skin.joint_node_indices) |joint_idx| {
+                        const model = self.model orelse break;
+                        const tree = model.scene_trees[self.scene_root_index.?];
+                        const joint_node = tree.nodes[joint_idx];
+                        const joint_name: [:0]u8 = try alloc.dupeZ(u8, joint_node.name);
+                        ig.igBulletText("Joint %d: %s", joint_idx, joint_name.ptr);
+                    }
+
+                    ig.igTreePop();
+                }
+            }
         }
 
         if (opened) {
