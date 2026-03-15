@@ -57,7 +57,6 @@ const GltfViewer = struct {
     // GLTF Core
     model: ?GltfModel = null,
     scene_root_index: ?usize = null,
-    time: f64 = 0.0,
 
     // Asset loader
     assets_selection_state: [NUM_ASSETS]bool = undefined,
@@ -65,6 +64,10 @@ const GltfViewer = struct {
 
     // Skinning
     use_skinning: bool = true,
+
+    // Animation
+    time: f64 = 0.0,
+    selected_animation_index: ?usize = null,
 
     // Other UI
     imgui_window_open: bool = true,
@@ -250,29 +253,37 @@ const GltfViewer = struct {
 
                     if (self.model) |*model| {
                         const animations = model.gltf.data.animations;
-                        for (animations) |*anim| {
-                            const samplers = anim.samplers;
-                            const animation_name = alloc.dupeZ(u8, anim.name orelse "(unknown-animation-name)") catch unreachable;
-                            const opened = ig.igTreeNodeExStr(animation_name, 0, animation_name);
-                            if (opened) {
-                                for (anim.channels, 0..) |*channel, channel_index| {
-                                    const channel_name = std.fmt.allocPrintSentinel(alloc, "{s} Channel {d}", .{ anim.name orelse "(unknown-animation-name)", channel_index }, 0) catch unreachable;
-                                    const channel_subtree_opened = ig.igTreeNodeExStr(channel_name, 0, channel_name);
-                                    if (channel_subtree_opened) {
-                                        const tree = model.scene_trees[self.scene_root_index.?];
-                                        const target_node = tree.nodes[channel.target.node];
-                                        _ = ig.igBulletText("Target Node: %s", target_node.name.ptr);
-                                        _ = ig.igBulletText("Translation Property: %s", @tagName(channel.target.property).ptr);
-                                        const channel_sampler = samplers[channel.sampler];
-                                        _ = ig.igBulletText("Sampler Interpolation: %s", @tagName(channel_sampler.interpolation).ptr);
-                                        // const channel_input_accessor = model.gltf.data.accessors[channel_sampler.input];
 
-                                        // channel.sampler
-                                        ig.igTreePop();
-                                    }
+                        const preview = if (self.selected_animation_index) |i| animations[i].name orelse "(unknown-animation-name)" else "Pick an animation...";
+                        const preview_z = alloc.dupeZ(u8, preview) catch unreachable;
+                        if (ig.igBeginCombo("Select an animation to load", preview_z.ptr, 0)) {
+                            if (ig.igSelectable("Reset to bind pose")) {
+                                self.selected_animation_index = null;
+                            }
+                            for (animations, 0..) |*anim, i| {
+                                const anim_name = alloc.dupeZ(u8, anim.name orelse "(unknown-animation-name)") catch unreachable;
+                                if (ig.igSelectable(anim_name.ptr)) {
+                                    self.selected_animation_index = i;
                                 }
+                            }
+                            ig.igEndCombo();
+                        }
 
-                                ig.igTreePop();
+                        if (self.selected_animation_index) |animation_index| {
+                            const anim = animations[animation_index];
+                            const samplers = anim.samplers;
+                            for (anim.channels, 0..) |*channel, channel_index| {
+                                const channel_name = std.fmt.allocPrintSentinel(alloc, "{s} Channel {d}", .{ anim.name orelse "(unknown-animation-name)", channel_index }, 0) catch unreachable;
+                                const channel_subtree_opened = ig.igTreeNodeExStr(channel_name, 0, channel_name);
+                                if (channel_subtree_opened) {
+                                    const tree = model.scene_trees[self.scene_root_index.?];
+                                    const target_node = tree.nodes[channel.target.node];
+                                    _ = ig.igBulletText("Target Node: %s", target_node.name.ptr);
+                                    _ = ig.igBulletText("Translation Property: %s", @tagName(channel.target.property).ptr);
+                                    const channel_sampler = samplers[channel.sampler];
+                                    _ = ig.igBulletText("Sampler Interpolation: %s", @tagName(channel_sampler.interpolation).ptr);
+                                    ig.igTreePop();
+                                }
                             }
                         }
                     }
@@ -406,8 +417,9 @@ export fn frame(userdata: ?*anyopaque) void {
                 }
                 for (node.children) |child| {
                     var local_trs = child.local_trs_transform;
-                    if (model.gltf.data.animations.len > 0) {
-                        local_trs = model.animatedNodeTRS(alloc, 0, child.idx, state.time) catch @panic("Failed to get animated transform");
+                    // Apply transform from animation if available
+                    if (state.selected_animation_index) |animation_index| {
+                        local_trs = model.animatedNodeTRS(alloc, animation_index, child.idx, state.time) catch @panic("Failed to get animated transform");
                     }
                     child.accumulated_transform = Mat4.mul(node.accumulated_transform, local_trs);
                     node_queue.append(alloc, child.*) catch {};
