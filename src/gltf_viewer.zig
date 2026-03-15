@@ -63,7 +63,7 @@ const GltfViewer = struct {
     selected_asset_index: ?usize = null,
 
     // Skinning
-    use_skinning: bool = false,
+    use_skinning: bool = true,
 
     // Other UI
     imgui_window_open: bool = true,
@@ -260,6 +260,7 @@ const GltfViewer = struct {
                                         _ = ig.igBulletText("Translation Property: %s", @tagName(channel.target.property).ptr);
                                         const channel_sampler = samplers[channel.sampler];
                                         _ = ig.igBulletText("Sampler Interpolation: %s", @tagName(channel_sampler.interpolation).ptr);
+                                        // const channel_input_accessor = model.gltf.data.accessors[channel_sampler.input];
 
                                         // channel.sampler
                                         ig.igTreePop();
