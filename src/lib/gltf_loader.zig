@@ -273,7 +273,8 @@ pub const Primitive = struct {
                             .v = 0,
                             .tangent = Vec4.new(0, 0, 0, 0),
                             .joint = [4]u32{ 0, 0, 0, 0 },
-                            .weight = Vec4.new(0, 0, 0, 0),
+                            // defaults to all weight on the first joint
+                            .weight = Vec4.new(1.0, 0, 0, 0),
                         });
                     }
                 },

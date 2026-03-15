@@ -29,8 +29,8 @@ void main() {
                  + joint_palette[joints.y] * weights.y
                  + joint_palette[joints.z] * weights.z
                  + joint_palette[joints.w] * weights.w;
-    // vec4 skinned_pos = skin_matrix * position;
-    vec4 skinned_pos = position;
+    vec4 skinned_pos = skin_matrix * position;
+    // vec4 skinned_pos = position;
     vec4 world = model * skinned_pos;
     gl_Position = view_projection * world;
     v_world_pos = world.xyz;

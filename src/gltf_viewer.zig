@@ -157,8 +157,8 @@ const GltfViewer = struct {
             ig.igSameLine();
             ig.igTextColored(.{ .x = 1.0, .y = 0.6, .z = 0.2, .w = 1.0 }, "[Skinned]");
 
-            const skin_name = try std.fmt.allocPrintSentinel(alloc, "Skin: {s}", .{skin.name orelse "(unnamed-skin)"}, 0);
             if (opened) { // Start subtree for skin information
+                const skin_name = try std.fmt.allocPrintSentinel(alloc, "Skin: {s}", .{skin.name orelse "(unnamed-skin)"}, 0);
                 const skin_subtree_open = ig.igTreeNodeExStr(skin_name.ptr, 0, skin_name.ptr);
                 ig.igSameLine();
                 ig.igTextColored(.{ .x = 0.6, .y = 0.6, .z = 0.6, .w = 1.0 }, "[%d inverse bind matrices]", skin.inverse_bind_matrices.len);
