@@ -57,6 +57,7 @@ const GltfViewer = struct {
     // GLTF Core
     model: ?GltfModel = null,
     scene_root_index: ?usize = null,
+    time: f64 = 0.0,
 
     // Asset loader
     assets_selection_state: [NUM_ASSETS]bool = undefined,
@@ -243,6 +244,10 @@ const GltfViewer = struct {
                 }
 
                 if (ig.igBeginTabItem("Animation", null, 0)) {
+                    const time_string = std.fmt.allocPrintSentinel(alloc, "Time: {d}", .{self.time}, 0) catch unreachable;
+                    _ = ig.igText(time_string.ptr);
+                    ig.igNewLine();
+
                     if (self.model) |*model| {
                         const animations = model.gltf.data.animations;
                         for (animations) |*anim| {
@@ -361,7 +366,8 @@ export fn frame(userdata: ?*anyopaque) void {
     defer arena.deinit();
     const alloc = arena.allocator();
     const state: *GltfViewer = @ptrCast(@alignCast(userdata));
-
+    const dt: f64 = sapp.frameDuration();
+    state.time += dt;
     sfetch.dowork();
 
     // Setup imgui
@@ -401,7 +407,7 @@ export fn frame(userdata: ?*anyopaque) void {
                 for (node.children) |child| {
                     var local_trs = child.local_trs_transform;
                     if (model.gltf.data.animations.len > 0) {
-                        local_trs = model.animatedNodeTRS(alloc, 0, child.idx, 2) catch @panic("Failed to get animated transform");
+                        local_trs = model.animatedNodeTRS(alloc, 0, child.idx, state.time) catch @panic("Failed to get animated transform");
                     }
                     child.accumulated_transform = Mat4.mul(node.accumulated_transform, local_trs);
                     node_queue.append(alloc, child.*) catch {};

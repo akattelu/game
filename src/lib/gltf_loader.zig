@@ -205,7 +205,7 @@ pub const GltfModel = struct {
         self.scene_trees = try roots.toOwnedSlice(alloc);
     }
 
-    pub fn animatedNodeTRS(self: *GltfModel, alloc: std.mem.Allocator, animation_idx: usize, node_idx: usize, t: f32) !Mat4 {
+    pub fn animatedNodeTRS(self: *GltfModel, alloc: std.mem.Allocator, animation_idx: usize, node_idx: usize, t: f64) !Mat4 {
         var translation: [3]f32 = .{ 0, 0, 0 };
         var rotation: [4]f32 = .{ 0, 0, 0, 1 };
         var scale: [3]f32 = .{ 1, 1, 1 };
@@ -221,11 +221,22 @@ pub const GltfModel = struct {
             const sampler_input_accessor = self.gltf.data.accessors[sampler.input];
 
             // Find time that is closest to the given t value
-            var input_it = sampler_input_accessor.iterator(f32, &self.gltf, self.gltf.glb_binary.?);
-            var time_idx: usize = 0;
-            while (input_it.next()) |time_value| : (time_idx += 1) {
-                // For now just find the smallest time bigger than t
-                if (time_value[0] > t) break;
+            const input_times = try self.gltf.getDataFromBufferView(f32, alloc, sampler_input_accessor, self.gltf.glb_binary.?);
+            const time_max: f32 = input_times[input_times.len - 1];
+            const modulated_time = @mod(t, time_max);
+            var keyframe_start_idx: usize = 0;
+            var keyframe_end_idx: usize = 0;
+            var interpolation_scale: f32 = 0.0;
+            for (input_times[0 .. input_times.len - 1], 0..) |time_value, i| {
+                const keyframe_time_now = time_value;
+                const keyframe_time_next = input_times[i + 1];
+
+                if (modulated_time >= keyframe_time_now and modulated_time <= keyframe_time_next) {
+                    keyframe_start_idx = i;
+                    keyframe_end_idx = i + 1;
+                    interpolation_scale = @floatCast((modulated_time - keyframe_time_now) / (keyframe_time_next - keyframe_time_now));
+                    break;
+                }
             }
 
             // Read sampler output accessor
@@ -233,17 +244,20 @@ pub const GltfModel = struct {
             if (channel.target.property == .translation) {
                 // If translation, read a vec3 from the output accessor
                 const translation_vectors = try self.gltf.getDataFromBufferView(f32, alloc, sampler_output_accessor, self.gltf.glb_binary.?);
-                translation = .{ translation_vectors[time_idx], translation_vectors[time_idx + 1], translation_vectors[time_idx + 2] };
+                const translation_start = keyframe_start_idx * 3;
+                translation = .{ translation_vectors[translation_start], translation_vectors[translation_start + 1], translation_vectors[translation_start + 2] };
             }
             if (channel.target.property == .rotation) {
                 // If rotation, read a quat from the output accessor
                 const rotation_vectors = try self.gltf.getDataFromBufferView(f32, alloc, sampler_output_accessor, self.gltf.glb_binary.?);
-                rotation = .{ rotation_vectors[time_idx], rotation_vectors[time_idx + 1], rotation_vectors[time_idx + 2], rotation_vectors[time_idx + 3] };
+                const rotation_start = keyframe_start_idx * 4;
+                rotation = .{ rotation_vectors[rotation_start], rotation_vectors[rotation_start + 1], rotation_vectors[rotation_start + 2], rotation_vectors[rotation_start + 3] };
             }
             if (channel.target.property == .scale) {
                 // If scale, read a vec3 from the output accessor
                 const scale_vectors = try self.gltf.getDataFromBufferView(f32, alloc, sampler_output_accessor, self.gltf.glb_binary.?);
-                scale = .{ scale_vectors[time_idx], scale_vectors[time_idx + 1], scale_vectors[time_idx + 2] };
+                const scale_start = keyframe_start_idx * 3;
+                scale = .{ scale_vectors[scale_start], scale_vectors[scale_start + 1], scale_vectors[scale_start + 2] };
             }
         }
 
