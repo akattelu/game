@@ -448,25 +448,23 @@ pub const Primitive = struct {
     }
 
     pub fn loadIndices(self: *Primitive, gltf_prim: *const Gltf.Primitive, gltf: *Gltf) !void {
-        const alloc = self.arena.allocator();
-        var indices = std.ArrayList(u16).empty;
         // Read and load indices
         if (gltf_prim.indices) |prim_indices| {
             const accessor = gltf.data.accessors[prim_indices];
-            if (accessor.component_type == .unsigned_short) {
-                var it = accessor.iterator(u16, gltf, gltf.glb_binary.?);
-                while (it.next()) |i| {
-                    try indices.append(alloc, i[0]);
-                }
-            }
-
-            const owned_indices = try indices.toOwnedSlice(alloc);
+            const item_count = accessor.count;
+            const buffer_view = gltf.data.buffer_views[accessor.buffer_view orelse unreachable];
+            const len = buffer_view.byte_length;
+            const offset = buffer_view.byte_offset;
+            const range: sg.Range = .{
+                .ptr = gltf.glb_binary.?[offset..].ptr,
+                .size = len,
+            };
             self.binding.index_buffer = sg.makeBuffer(.{
                 .label = "Primitive Index Buffer",
                 .usage = .{ .index_buffer = true },
-                .data = sg.asRange(owned_indices),
+                .data = range,
             });
-            self.object_count = @intCast(owned_indices.len);
+            self.object_count = @intCast(item_count);
         }
     }
 
