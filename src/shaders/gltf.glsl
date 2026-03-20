@@ -37,7 +37,6 @@ void main() {
     } else {
         skinned_pos = position;
     }
-    // vec4 skinned_pos = position;
     vec4 world = model * skinned_pos;
     gl_Position = view_projection * world;
     v_world_pos = world.xyz;

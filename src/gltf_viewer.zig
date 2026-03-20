@@ -35,7 +35,7 @@ inline fn allocator() std.mem.Allocator {
 var st: GltfViewer = .{};
 var sfetch_buffer: [100 * 1024 * 1024]u8 align(4) = undefined;
 
-const NUM_ASSETS = 14;
+const NUM_ASSETS = 15;
 const available_assets: [NUM_ASSETS][]const u8 = .{
     "CompareMetallic.glb",
     "CompareNormal.glb",
@@ -51,6 +51,7 @@ const available_assets: [NUM_ASSETS][]const u8 = .{
     "RiggedSimple.glb",
     "BarramundiFish.glb",
     "Avocado.glb",
+    "RobotExpressive.glb",
 };
 
 const GltfViewer = struct {
