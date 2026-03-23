@@ -205,10 +205,13 @@ pub const GltfModel = struct {
         self.scene_trees = try roots.toOwnedSlice(alloc);
     }
 
-    pub fn animatedNodeTRS(self: *GltfModel, alloc: std.mem.Allocator, animation_idx: usize, node_idx: usize, t: f64, preferred_interpolation: enum { none, linear }) !Mat4 {
-        var translation: [3]f32 = .{ 0, 0, 0 };
-        var rotation: [4]f32 = .{ 0, 0, 0, 1 };
-        var scale: [3]f32 = .{ 1, 1, 1 };
+    pub fn animatedNodeTRS(self: *GltfModel, alloc: std.mem.Allocator, animation_idx: usize, node: *const Node, t: f64, preferred_interpolation: enum { none, linear }) !?Mat4 {
+        var translation: ?[3]f32 = null;
+        var rotation: ?[4]f32 = null;
+        var scale: ?[3]f32 = null;
+
+        const node_idx = node.idx;
+        const gltf_node = self.gltf.data.nodes[node_idx];
 
         const animation = self.gltf.data.animations[animation_idx];
         // find channels that match this node
@@ -253,7 +256,6 @@ pub const GltfModel = struct {
                 } else {
                     translation = .{ translation_vectors[translation_start], translation_vectors[translation_start + 1], translation_vectors[translation_start + 2] };
                 }
-                translation = .{ translation_vectors[translation_start], translation_vectors[translation_start + 1], translation_vectors[translation_start + 2] };
             }
             if (channel.target.property == .rotation) {
                 // If rotation, read a quat from the output accessor
@@ -283,7 +285,8 @@ pub const GltfModel = struct {
             }
         }
 
-        return Mat4.fromTRS(translation, rotation, scale);
+        if (translation == null and rotation == null and scale == null) return null;
+        return Mat4.fromTRS(translation orelse gltf_node.translation, rotation orelse gltf_node.rotation, scale orelse gltf_node.scale);
     }
 };
 

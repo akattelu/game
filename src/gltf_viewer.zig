@@ -408,13 +408,46 @@ export fn frame(userdata: ?*anyopaque) void {
 
         // Push starting root node
         if (state.scene_root_index) |root_idx| {
-            const root = model.scene_trees[root_idx];
-            const root_idx_of_scene = root.root_idx;
-            root.nodes[root_idx_of_scene].accumulated_transform = root.nodes[root_idx_of_scene].local_trs_transform;
-            node_queue.append(alloc, root.nodes[root_idx_of_scene]) catch @panic("Failed to append node to queue");
+            const selected_scene_skeleton_tree = model.scene_trees[root_idx];
+            const root_idx_of_scene = selected_scene_skeleton_tree.root_idx;
+            var root_node = selected_scene_skeleton_tree.nodes[root_idx_of_scene];
+            var root_local: ?Mat4 = root_node.local_trs_transform;
+            if (state.selected_animation_index) |animation_index| {
+                root_local = model.animatedNodeTRS(
+                    alloc,
+                    animation_index,
+                    &root_node,
+                    state.time,
+                    if (state.use_interpolation) .linear else .none,
+                ) catch root_local;
+                root_node.accumulated_transform = Mat4.mul(root_node.accumulated_transform, root_local orelse Mat4.identity());
+            }
+
+            // Start populating transforms in DFS
+            node_queue.append(alloc, root_node) catch @panic("Failed to append node to queue");
             while (node_queue.pop()) |*node| {
-                const joint_palette = root.getJointPalette(node);
+                for (node.children) |child| {
+                    var local_trs: ?Mat4 = child.local_trs_transform;
+                    // Apply transform from animation if available
+                    if (state.selected_animation_index) |animation_index| {
+                        local_trs = model.animatedNodeTRS(
+                            alloc,
+                            animation_index,
+                            child,
+                            state.time,
+                            if (state.use_interpolation) .linear else .none,
+                        ) catch @panic("Failed to get animated transform");
+                    }
+                    child.accumulated_transform = Mat4.mul(node.accumulated_transform, local_trs orelse child.local_trs_transform);
+                    node_queue.append(alloc, child.*) catch unreachable;
+                }
+            }
+
+            // Draw tree with DFS
+            node_queue.append(alloc, root_node) catch @panic("Failed to append node to queue");
+            while (node_queue.pop()) |*node| {
                 if (node.mesh) |mesh| {
+                    const joint_palette = selected_scene_skeleton_tree.getJointPalette(node);
                     for (mesh.primitives) |prim| {
                         sg.applyBindings(prim.binding);
                         sg.applyUniforms(shd.UB_vs_params, sg.asRange(&state.vsUniforms(&prim, node.accumulated_transform, joint_palette)));
@@ -422,14 +455,9 @@ export fn frame(userdata: ?*anyopaque) void {
                         sg.draw(0, prim.object_count, 1);
                     }
                 }
+
                 for (node.children) |child| {
-                    var local_trs = child.local_trs_transform;
-                    // Apply transform from animation if available
-                    if (state.selected_animation_index) |animation_index| {
-                        local_trs = model.animatedNodeTRS(alloc, animation_index, child.idx, state.time, if (state.use_interpolation) .linear else .none) catch @panic("Failed to get animated transform");
-                    }
-                    child.accumulated_transform = Mat4.mul(node.accumulated_transform, local_trs);
-                    node_queue.append(alloc, child.*) catch {};
+                    node_queue.append(alloc, child.*) catch unreachable;
                 }
             }
         }
