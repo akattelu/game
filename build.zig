@@ -277,7 +277,10 @@ fn buildFor(b: *std.Build, variant: BuildVariant) !void {
             });
             copy_assets_dir.step.dependOn(web_artifacts);
 
-            b.getInstallStep().dependOn(&copy_assets_dir.step);
+            const copy_index_html = b.addInstallFile(b.path("src/web/index.html"), "web/index.html");
+            copy_index_html.step.dependOn(&copy_assets_dir.step);
+
+            b.getInstallStep().dependOn(&copy_index_html.step);
         },
     }
 }
