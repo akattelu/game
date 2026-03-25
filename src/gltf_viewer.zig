@@ -35,24 +35,49 @@ inline fn allocator() std.mem.Allocator {
 var st: GltfViewer = .{};
 var sfetch_buffer: [100 * 1024 * 1024]u8 align(4) = undefined;
 
-const NUM_ASSETS = 15;
-const available_assets: [NUM_ASSETS][]const u8 = .{
-    "CompareMetallic.glb",
-    "CompareNormal.glb",
-    "CompareRoughness.glb",
-    "NormalTangentMirrorTest.glb",
-    "Skely.glb",
-    "StairsXL.glb",
-    "street.glb",
-    "Skeleton_Mage.glb",
-    "CesiumMilkTruck.glb",
-    "CesiumMan.glb",
-    "IridescentDishWithOlives.glb",
-    "RiggedSimple.glb",
-    "BarramundiFish.glb",
-    "Avocado.glb",
-    "RobotExpressive.glb",
+const gltf_sample_assets_base_url = "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/refs/heads/main/Models";
+
+const Asset = struct { label: []const u8, name: []const u8 };
+const available_assets = [_]Asset{
+    // Showcase models
+    .{ .label = "Damaged Helmet", .name = "DamagedHelmet" },
+    .{ .label = "Cesium Milk Truck", .name = "CesiumMilkTruck" },
+    .{ .label = "Antique Camera", .name = "AntiqueCamera" },
+    .{ .label = "Lantern", .name = "Lantern" },
+    .{ .label = "Water Bottle", .name = "WaterBottle" },
+    .{ .label = "Corset", .name = "Corset" },
+    .{ .label = "BoomBox", .name = "BoomBox" },
+    .{ .label = "Toy Car", .name = "ToyCar" },
+    .{ .label = "Glam Velvet Sofa", .name = "GlamVelvetSofa" },
+
+    // Animated / skinned models
+    .{ .label = "Cesium Man", .name = "CesiumMan" },
+    .{ .label = "Robot Expressive", .name = "RobotExpressive" },
+    .{ .label = "Fox", .name = "Fox" },
+    .{ .label = "BrainStem", .name = "BrainStem" },
+    .{ .label = "Rigged Simple", .name = "RiggedSimple" },
+    .{ .label = "Box Animated", .name = "BoxAnimated" },
+
+    // PBR test models
+    .{ .label = "Avocado", .name = "Avocado" },
+    .{ .label = "Barramundi Fish", .name = "BarramundiFish" },
+    .{ .label = "Iridescent Dish With Olives", .name = "IridescentDishWithOlives" },
+    .{ .label = "Metal Rough Spheres", .name = "MetalRoughSpheres" },
+    .{ .label = "Sheen Chair", .name = "SheenChair" },
+    .{ .label = "Materials Variants Shoe", .name = "MaterialsVariantsShoe" },
+
+    // Material comparison tests
+    .{ .label = "Compare Metallic", .name = "CompareMetallic" },
+    .{ .label = "Compare Normal", .name = "CompareNormal" },
+    .{ .label = "Compare Roughness", .name = "CompareRoughness" },
+    .{ .label = "Normal Tangent Mirror Test", .name = "NormalTangentMirrorTest" },
+
+    // Simple/basic
+    .{ .label = "Duck", .name = "Duck" },
+    .{ .label = "Box Textured", .name = "BoxTextured" },
 };
+
+const NUM_ASSETS = available_assets.len;
 
 const GltfViewer = struct {
     // GLTF Core
@@ -203,10 +228,10 @@ const GltfViewer = struct {
         if (ig.igBegin("GLTF/GLB Viewer", &self.imgui_window_open, ig.ImGuiWindowFlags_AlwaysAutoResize)) {
             if (ig.igBeginTabBar("Settings", 0)) {
                 if (ig.igBeginTabItem("General", null, 0)) {
-                    const preview = if (self.selected_asset_index) |a| available_assets[a] else "Pick a file...";
+                    const preview = if (self.selected_asset_index) |a| available_assets[a].label else "Pick a file...";
                     if (ig.igBeginCombo("Select an asset to load", preview.ptr, 0)) {
                         for (&self.assets_selection_state, 0..) |*selected, i| {
-                            if (ig.igSelectableBoolPtr(available_assets[i].ptr, selected, 0)) {
+                            if (ig.igSelectableBoolPtr(available_assets[i].label.ptr, selected, 0)) {
                                 self.selected_asset_index = i;
                                 self.initiateAssetFetch(alloc) catch @panic("Failed to fetch asset");
                             }
@@ -305,7 +330,18 @@ const GltfViewer = struct {
 
     fn initiateAssetFetch(self: *GltfViewer, alloc: std.mem.Allocator) !void {
         if (self.selected_asset_index) |idx| {
-            const path = try std.fmt.allocPrintSentinel(alloc, "assets/{s}", .{available_assets[idx]}, 0);
+            const asset = available_assets[idx];
+            const path = if (comptime builtin.target.cpu.arch.isWasm()) try std.fmt.allocPrintSentinel(
+                alloc,
+                "{s}/{s}/glTF-Binary/{s}.glb",
+                .{ gltf_sample_assets_base_url, asset.name, asset.name },
+                0,
+            ) else try std.fmt.allocPrintSentinel(
+                alloc,
+                "assets/{s}.glb",
+                .{asset.name},
+                0,
+            );
             std.debug.assert(sfetch.valid());
             _ = sfetch.send(.{
                 .path = path.ptr,
