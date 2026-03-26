@@ -33,6 +33,8 @@ const BuildVariant = struct {
 };
 
 pub fn build(b: *std.Build) !void {
+    const web_backend = b.option(enum { webgpu, webgl }, "web-backend", "Which backend to use between webgpu, webgl. If not specified, all targets will be installed");
+
     const optimize: std.builtin.OptimizeMode = switch (b.release_mode) {
         .off => .Debug,
         .fast => .ReleaseFast,
@@ -40,16 +42,29 @@ pub fn build(b: *std.Build) !void {
         .safe => .ReleaseSafe,
         else => unreachable,
     };
+    const root_app_names: []const []const u8 = &.{
+        "terrain_cpu",
+        "terrain_gpu",
+        "gltf_viewer",
+    };
+
+    if (web_backend) |web_target| {
+        for (root_app_names) |root_app_name| {
+            const target: SokolTarget = switch (web_target) {
+                .webgl => .webgl,
+                .webgpu => .webgpu,
+            };
+            try buildFor(b, .{ .optimize = optimize, .target = target, .root_app_name = root_app_name });
+        }
+        return;
+    }
+
+    // If web backend not specified, run all targets
     const targets: []const SokolTarget = &.{
         .webgpu,
         .webgl,
         .{ .native = .{} },
         .{ .native = .{ .cpu_arch = .x86_64, .os_tag = .windows } },
-    };
-    const root_app_names: []const []const u8 = &.{
-        "terrain_cpu",
-        "terrain_gpu",
-        "gltf_viewer",
     };
     for (targets) |target| {
         for (root_app_names) |root_app_name| {
