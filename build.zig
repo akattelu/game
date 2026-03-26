@@ -64,7 +64,6 @@ pub fn build(b: *std.Build) !void {
         .webgpu,
         .webgl,
         .{ .native = .{} },
-        .{ .native = .{ .cpu_arch = .x86_64, .os_tag = .windows } },
     };
     for (targets) |target| {
         for (root_app_names) |root_app_name| {
