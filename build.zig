@@ -208,7 +208,11 @@ fn compileShaders(b: *std.Build, variant: BuildVariant, dep_shdc: *std.Build.Dep
         step.dependOn(shdc_step);
     }
 
-    return step;
+    const fmt_step = b.addFmt(.{ .paths = &.{"src/"}, .check = false });
+
+    fmt_step.step.dependOn(step);
+
+    return &fmt_step.step;
 }
 
 fn fatal(comptime format: []const u8, args: anytype) noreturn {
