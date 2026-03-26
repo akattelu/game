@@ -289,15 +289,8 @@ fn buildFor(b: *std.Build, variant: BuildVariant) !void {
             const web_artifacts = try buildWeb(b, root_mod, deps, variant, true);
             web_artifacts.dependOn(shaders);
 
-            const copy_assets_dir = b.addInstallDirectory(.{
-                .source_dir = b.path("assets"),
-                .install_dir = .prefix,
-                .install_subdir = "web/assets",
-            });
-            copy_assets_dir.step.dependOn(web_artifacts);
-
             const copy_index_html = b.addInstallFile(b.path("src/web/index.html"), "web/index.html");
-            copy_index_html.step.dependOn(&copy_assets_dir.step);
+            copy_index_html.step.dependOn(web_artifacts);
 
             b.getInstallStep().dependOn(&copy_index_html.step);
         },
